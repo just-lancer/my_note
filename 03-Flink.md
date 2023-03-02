@@ -7,7 +7,7 @@
 
 在不同的部署模式下，Flink各组件的启动以及资源获取的方式都有所不同，为此Flink提供了三种不同的部署模式。而在不同的运行环境下，Flink的资源调度和服务启停也都有所不同，Flink根据不同的场景也提供了不同运行模式。
 
-# 1、部署模式
+## 1、部署模式
 
 为满足不同场景中，集群资源分配和占用方式的需求，Flink提供了不同的部署模式。这些模式的主要区别在于：集群的生命周期以及资源的分配方式，以及Flink应用中main方法到底在哪里执行：Client还是JobManager。
 
@@ -261,6 +261,8 @@ Flink集群规划
 -   **当启动了TaskManager后，任务将很快执行完成，JobManager就会释放资源，此时需要手动停止TaskManager：`taskmanager.sh stop`**
 
 >   **==需要注意的是，当JobManager长时间等不到TaskManager启动，获取不到任务执行的资源，那么JobManager会自动关闭。==**
+>
+>   **==手动关闭JobManager：`standalone-job.sh stop --job-classname <Flink Application的全类名>`==**
 
 #### 1.2.3 Standalone运行模式的高可用部署（Standalone - HA模式）
 
@@ -309,6 +311,8 @@ Standalone的HA模式是通过在集群中配置并运行多个JobManager的方�
 -   **启动Zookeeper集群：`zk_mine.sh start`**
 
 -   **启动Hadoop HA集群，HDFS HA集群一定要启动，YARN HA可以不用启动，暂时用不到：`start-dfs.sh`**
+
+>   **==注意：以下进行Standalone HA集群的启动，其本质是Standalone - Session模式的高可用配置，是在Standalone - Session模式的基础上，对JobManager进行了HA配置。对于Standalone - Application模式，没有HA配置，原因在于Standalone - Application模式是在Application提交之后才创建Flink集群的。在没有资源调度框架的支持下，无法实现JobManager的HA配置。==**
 
 -   **启动Standalone HA集群：`start-cluster.sh`，此时，各节点启动服务如下：**
 
@@ -449,4 +453,355 @@ Flink YARN运行模式前置准备工作：
     >   **在Flink 1.11.0版本之前可以使用-n参数和-s参数分别指定TaskManager数量和Slot数量。从Flink 1.11.0版本开始，便不再使用-n参数和-s参数。YARN会按照需求，动态分配TaskManager和Slot。所以YARN - Session模式是动态分配资源的。**
 
 -   **YARN - Session启动后，会给出一个Web UI地址以及一个YARN Application ID**
+
+    ```txt
+    ......
+    2023-03-01 10:15:44,724 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Submitting application master application_1677636908998_0001
+    2023-03-01 10:15:45,052 INFO  org.apache.hadoop.yarn.client.api.impl.YarnClientImpl        [] - Submitted application application_1677636908998_0001
+    2023-03-01 10:15:45,053 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Waiting for the cluster to be allocated
+    2023-03-01 10:15:45,056 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Deploying cluster, current state ACCEPTED
+    2023-03-01 10:15:52,417 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - YARN application has been deployed successfully.
+    2023-03-01 10:15:52,418 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Found Web Interface hadoop132:36564 of application 'application_1677636908998_0001'.
+    JobManager Web Interface: http://hadoop132:36564
+    ```
+
+-   **开启YARN - Session会话后，就可以通过命令行或者Flink Web UI进行作业提交**
+
+>   **==Flink 作业提交方式和过程将在最后进行介绍。==**
+
+-   **YARN - Session会话的关闭：**
+    -   **当YARN - Session会话前台启动时，直接关闭前台会话即可停止YARN - Session**
+    -   **当使用-d参数，使YARN - Session会话后台启动时，使用命令可以停止YARN - Session会话：`echo "stop" | yarn-session.sh -id application_XXXXX_XXX`。其中，`application_XXXXX_XXX`为YARN Application ID**
+
+
+#### 1.3.2 YARN运行模式下的单作业模式（YARN - Per Job模式）
+
+在集成了Hadoop环境之后，可以使用YARN进行资源调度，所以可以部署YARN运行模式的单作业部署模式。
+
+YARN运行模式的单作业部署模式无需额外的配置，通过不同的脚本命令即可启动Flink集群。
+
+-   **利用xftp工具将需要执行的Flink应用jar包上传到/opt/module/flink-1.13.0-yarn/lib目录下。本次测试，依然使用上面的WordCount示例。**
+
+-   **执行命令，提交Application：`flink run -d -t yarn-per-job -c D1_WorldCount_Bounded wc_flink-1.0.jar`**
+
+    ```txt
+    # 命令格式，及参数说明
+    flink run -d -t yarn-per-job -c <Application的入口类的全类名> <Application所在jar包>
+    -d 		表示分离模式，使用该参数能够使YARN - Per Job模式的会话后台运行
+    -t 		用于指定单作业模式
+    ```
+
+-   **当Application提交完成之后，启动日志会给出一个YARN Application ID，通过YARN ResourceManager Web UI界面，可以查看任务执行情况。点击`Tracking UI`，能够进入Flink Web UI界面，对任务进行监控或取消任务**
+
+>   **==注意：上述Flink应用需要读取一个本地文件，是一个有界数据流任务处理，在提交任务之后，由于在Linux上没有该文件，所以会自动失败，但不影响Flink集群启动。后续将会把该任务替换成无界流数据处理任务。==**
+>
+>   **==注意：不建议使用这种部署模式，因为在Flink 1.15版本之后，Flink就不再支持单作业模式了，如果获取单作业模式的优势，需要部署应用模式。==**
+
+-   **查看YARN任务中正在执行的Flink Per Job任务：`flink list -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
+-   **取消正在运行的Flink任务：`flink cancel -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
+
+>   **注意：YARN会为Application中的每一个Job开启一个Flink集群，当Job执行完成时，该Job所在的Flink集群就会自动释放资源。**
+
+#### 1.3.3 YARN运行模式下的应用模式（YARN - Application模式）
+
+应用模式和会话模式、单作业模式相同，不需要额外的进行配置，直接执行Application提交命令即可。
+
+-   **执行命令，提交Application：`flink run-application -t yarn-application -c <Application的入口类的全类名> <Application所在jar包>`**
+-   **同样，当Application提交完成后，启动日志会给出YARN Application ID，通过YARN ResourceManager Web UI界面，可以查看任务执行情况。同样，点击`Tracking UI`，能够进入Flink Web UI界面，对任务任务进行监控或取消。**
+-   **查看YARN任务中正在执行的Flink Application任务：`flink list -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+-   **取消正在运行的Flink任务：`flink cancel -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+
+>   **说明：在任务提交过程中，可以通过yarn.provided.lib.dirs配置项来将jar包上传到Flink集群所有节点都能访问的地址，一般是HDFS，这种方式下jar包可以预先上传到HDFS，而不需要单独发送到Flink集群，这使得Application提交更加轻量。**
+>
+>   **命令格式：`flink run-application -t yarn-application -Dyarn.provided.lib.dirs=<远程地址> <jar包所在地址>`**
+>
+>   **例如：`flink run-application -t yarn-application -Dyarn.provided.lib.dirs="hdfs://myhdfs/my-remote-flink-dist-dir" hdfs://myhdfs/jars/my-application.jar`**
+
+#### 1.3.4 YARN运行模式下的高可用模式（YARN - HA模式）
+
+不同于Standalone - HA模式，是同时启动多个JobManager以避免单点故障的问题。YARN - HA模式是利用YARN的重试次数来实现高可用的，当JobManager宕机后，YARN会尝试重启JobManager。
+
+此外，Standalone - HA模式，一般只适用于Standalone的会话模式，而YRAN - HA模式适用于Session模式、Per Job模式以及Application模式。
+
+YARN - HA模式需要进行额外的参数配置：
+
+-   **在yarn-site.xml文件中添加额外的配置：`vim /opt/module/hadoop-3.1.3-ha/etc/hadoop/yarn-site.xml `**
+
+    ```xml
+    <property>
+        <name>yarn.resourcemanager.am.max-attempts</name>
+        <value>5</value>
+        <description>The maximum number of application master execution attempts.</description>
+    </property>
+    ```
+
+-   **分发配置好的yarn-site.xml文件：`xsync /opt/module/hadoop-3.1.3-ha/etc/hadoop/yarn-site.xml `**
+
+-   **在flink-conf.yaml文件中添加高可用配置：`vim /opt/module/flink-1.13.0-yarn/conf/flink-conf.yaml`**
+
+    ```yaml
+    # yarn-site.xml 中配置的是 JobManager 重启次数的上限, flink-conf.xml 中的次数一般小于这个值
+    yarn.application-attempts: 4 # 该参数默认值为2
+    high-availability: zookeeper
+    high-availability.storageDir: hdfs://hadoop132:8020/flink/yarn/ha
+    high-availability.zookeeper.quorum: hadoop132:2181,hadoop133:2181,hadoop134:2181
+    high-availability.zookeeper.path.root: /flink-yarn
+    ```
+
+    >   **==注意：Flink YARN - HA模式需要Hadoop环境的支持，所以一定要配置环境变量HADOOP_CLASSPATH和HADOOP_CONF_DIR==**
+    >
+    >   ```txt
+    >   export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
+    >   export HADOOP_CONF_DIR=`hadoop classpath`
+    >   ```
+
+-   **分发配置好的flink-conf-yaml文件：`xsync /opt/module/flink-1.13.0-yarn/conf/flink-conf.yaml`**
+
+-   **启动Zookeeper集群：`zk_mine.sh start`**
+
+-   **启动HDFS HA集群：`start-dfs.sh`**
+
+-   **启动YARN HA集群：`start-yarn.sh`**
+
+##### 1.3.4.1 Flink on YARN HA - Session模式
+
+-   **启动YARN - Session - HA模式：`yarn-session.sh -nm test`。HA部署下，会话模式启动后仍旧会给出Flink Web UI，当JobManager宕机并被YARN重启后，Web UI会发生变化，而已提交的任务会自动重新提交。Web UI发生变化后，可以通过YARN ResourceManger界面的`Tracking UI`重新进入。**
+-   **使用命令行或者Web UI可以进行任务提交**
+-   **停止YRAN会话：**
+    -   **当会话是前台启动时，可以直接终止会话**
+    -   **当会话是后台启动时，启动日志会给出停止YARN会话的命令：`echo "stop" | yarn-session.sh -id application_XXXXX_XXX`**
+
+##### 1.3.4.2 Flink on YARN HA - Per Job模式
+
+-   **不同于Session模式，Per Job模式直接提交任务即可：`flink run -t yarn-per-job -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
+-   **当Flink任务执行完成时，会自动停止该Flink集群，也可以通过Flink Web UI手动停止，或者通过YARN命令停止Flink集群所对应的任务**
+
+##### 1.3.4.3 Flink on YARN HA - Application模式
+
+-   **与Per Job模式相同，Application模式直接提交任务即可：`flink run-application -t yarn-application -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
+-   **当Flink任务执行完成时，会自动停止该Flink集群，也可以通过Flink Web UI手动停止，或者通过YARN命令停止Flink集群所对应的任务**
+
+## 3、Flink任务提交方式和流程
+
+Flink任务提交方式分为两种，一种是通过Flink集群的Web UI进行任务提交；另一种方式是通过命令行的方式。
+
+在不同的运行模式以及部署模式下，Flink任务的命令行提交方式略有不同，以下将逐一介绍。
+
+### 3.1 通过Web UI的方式提交任务
+
+通过Web UI的方式提交任务通常用于Session部署模式中，原因在于，通常先要能访问Web UI。对于Per Job模式和Application模式，需要先启动Hadoop环境（HDFS和YARN），然后直接向YARN提交任务，当YARN为该Flink任务分配好资源，并部署了JobManager后，用户才能访问Web UI。所以这两种模式都是任务提交后才能访问Web UI，因此不能通过Web UI的方式提交任务，只能使用命令行提交任务。对于Session模式，首先需要先启动一个YARN Session，当YARN Session启动好之后，便可以访问Web UI，并通过Web UI提交任务。
+
+综上，适合通过Web UI提交任务的模式有：Local、Standalone - Session、Flink on YARN (HA) - Session。
+
+-   **访问Web UI地址，并点击左侧导航栏：`Submit New Job`**![image-20230301190302963](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190302963.png)
+-   **点击右上角`Add New`上传Flink任务对应的jar包**![image-20230301190400272](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190400272.png)![image-20230301190530311](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190530311.png)
+-   **点击提交的jar包，进行提交参数设置，并提交任务**![image-20230301190903746](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190903746.png)
+
+-   **任务提交完成后，可以通过左侧导航栏的JobManager和TaskManager对任务进行监控和撤销**
+
+### 3.2 通过命令行的方式提交任务
+
+Per Job模式和Application模式只能通过命令行的方式提交任务，在前面测试时已经展示，现在统一进行介绍。
+
+-   **Standalone - Session模式：==先启动YARN会话，随后部署JobManager，最后提交任务==**
+    -   **启动Flink服务：`start-cluster.sh`**
+    -   **提交任务：`flink rum -m <Flink服务（IP:port）> -c <Flink Application 全类名> <Flink Application 所在jar包>`**
+
+>   ==**Standalone没有Per Job模式**==
+
+-   **Standalone - Application模式：==直接提交任务==**
+
+    -   **将Flink Application 所在jar包上传到Flink Standalone集群任意节点的\${FLINK_HOME}/lib目录下**
+
+    -   **提交任务，启动JobManager：`standalone-job.sh start --job-classname <Flink Application 所在jar包>`**
+
+    -   **启动TaskManager：`taskmanager.sh start`**
+
+        ```txt
+        # 停止JobManager
+        standalone-job.sh stop
+        # 停止TaskManager
+        taskmanager.sh stop
+        ```
+
+-   **Standalone HA - Session模式：==同Standalone - Session==**
+
+-   **Flink on YARN (HA) - Session模式：==先开启YARN会话，随后部署JobManager，最后提交任务==**
+
+    -   **申请开启YARN Session：`yarn-session.sh`**
+    -   **提交任务：`flink run -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
+
+    >   **==终止任务需要根据YARN ResouceManger中的Application ID进行停止，如果停止YARN Session任务，那么所有的Job都将停止，如果只停止指定的Job，那么不会对其他Job产生影响。==**
+
+-   **Flink on YARN (HA) - Per Job模式：==直接向YARN提交任务==**
+
+    -   **提交任务：`flink run -t yarn-per-job -c <Flink Application的全类名> <Flink Application 所在jar包>`**
+    -   **停止任务：`flink cancel -t yarn-per-job -Dyarn.application.id=<YARN Application ID> `**
+    -   **查看任务的运行状态：`flink list -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
+
+-   **Flink on YARN (HA) - Application模式：==直接向YARN提交任务==**
+
+    -   **提交任务：`flink run-application -t yarn-application -c <Flink Application的全类名> <Flink Application 所在jar包>`**
+    -   **停止任务：`flink cancel -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+    -   **查看任务的运行状态：`flink list -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+
+# 三、Flink运行时架构
+
+Flink是一个需要有效分配和管理计算资源，用以进行流数据处理的分布式系统。虽然集成了所有常见的资源调度组件，例如，YARN、Kubernetes、Mesos，但也可以部署为Standalone，甚至Local模式运行。
+
+下面将对Flink的体系架构，各个主要组件如何协调工作，以执行流数据处理，以及如何从故障中恢复。
+
+## 1、Flink体系架构
+
+Flink运行时架构主要包含两个主要的组件：JobManager和TaskManager。
+
+![image-20230301205516248](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301205516248.png)
+
+
+
+严格来讲，Client并不是Flink应用执行和运行时架构的一部分，而是用于准备和向JobManager发送DataFlowGraph的组件。随后，Client可以和Flink集群断开连接（detached mode），也可以与Flink集群保持连接（attached mode）。Client可以作为Java或者Scala应用程序的一部分运行，或者在命令行中运行。
+
+JobManager和TaskManager拥有不同的启动方式：直接在机器上作为Standalone集群启动、在容器中启动、或者通过YARN等资源框架管理并启动。TaskManager在启动之后会向JobManager汇报自己的状态以及资源情况，进而能够被JobManager分配任务。
+
+### 1.1 JobManager
+
+JobManager有许多与协调Flink应用程序，分布式执行时相关的职责：JobManager决定何时调度下一个task(或一组task)，对已完成的task或执行失败做出反应，协调checkpoint，协调故障恢复等等。JobManager由三个不同的部分组成:
+
+#### 1.1.1 JobMaster
+
+JobMaster是JobManager中最核心的组件，负责管理单个Job的执行。Flink集群中可以同时运行多个Job，每个Job都有自己的JobMaster。
+
+在Job提交时，Client会将jar包和已经解析好的DataFlowGraph和JobGraph发送给JobMaster，随后JobMaster会将JobGraph转换成ExecutionGraph，并分发到TaskManager中执行。在Job运行的过程中，JobMaster还会负责所有需要中央协调的操作，比如CheckPoints的协调。
+
+#### 1.1.2 ResourceManager
+
+ResourceManager主要负责资源的分配和管理，一个Flink进群中只有一个。在Flink集群中，资源主要指的是TaskManager的Task Slots，Task Slot是Flink集群资源调度的基本单位，主要包含CPU资源和内存资源。Flink集群运行的每一个Task都必须要分配到一个Slot上。
+
+需要注意的是，要区分Flink的ResourceManager和YARN的ResourceManager。
+
+Flink的ResourceManager，针对不同的环境和资源调度框架，都提供了具体的实现。
+
+在Standalone部署模式下，TaskManager是通过配置文件指定的，在Flink集群启动的那一刻，TaskManager的启动数量和节点位置就已经确定，随后启动成功的TaskManager会向JobManager的ResourceManager注册自己，并汇报Task Slots的使用状态。因此，Flink的ResourceManager只能分配可用的Task Slots，当Task Slots不够时，无法独立启动新的TaskManager，以提供Task Slots。
+
+在集成资源调度框架后，例如，Flink on YARN (HA)部署模式，当新提交的Job申请资源时，ResourceManager会将空闲的Task Slots分配给JobMaster，用以执行新提交的Job。当没有足够的Task Slots时，Flink的ResourceManager会向YARN的ResourceManager发送请求，YARN的ResourceManager将会开启Container，并部署TaskManager，以提供Task Slots。
+
+此外，Flink的ResourceManager还负责停止空闲的TaskManager，释放集群资源。
+
+#### 1.1.3 Discatcher
+
+Dispatcher提供了一个用于提交Flink Application的REST接口，并会为每个提交的Job启动一个新的 JobMaster。它还运行 Flink WebUI 用来提供Job执行信息。
+
+### 1.2 TaskManager
+
+TaskManager又被称为workers，用于进行数据流的具体计算任务，同时能够缓冲数据流，以及与其他TaskManager进行数据交换。
+
+## 2、Job提交流程
+
+Job总体提交流程
+
+![image-20230302110430344](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302110430344.png)
+
+-   **由Client通过Discatcher提供的REST接口，将Job提交给JobManager**
+-   **随后Discatcher启动JobMaster，将jar包和解析好的DataFlowGraph和JobGraph提交给JobMaster**
+-   **JobMaster将JobGraph解析成ExecutionGraph，并计算ExecutionGraph执行所需要的Task Slots数量，并向Flink ResourceManager申请Task Slots**
+-   **Flink ResourceManager申请资源：**
+    -   **Standalone部署模式下，Flink ResourceManager将判断当前Flink集群中空闲的Task Slots是否能够满足需求，如果满足，给JobMaster分配资源，如果不满足，由于无法自动启动TaskManager，所以该JobMaster只能等待资源分配**
+    -   **YARN部署模式下，Flink ResourceManager向YARN ResourceManager申请资源，YARN ResourceManager将开启Container，部署TaskManager，并向Flink ResourceManager注册可用Task Slots，Flink ResourceManager获取到足够的Task Slots注册后，将开始执行任务**
+-   **JobMaster将需要执行的任务分发给TaskManager，开始执行任务**
+
+Standalone运行模式下，Job提交流程较为简单，由Flink ResourceManager进行资源管理，当资源充足时，直接执行Job，当资源不足时，需要等待其他任务执行完成并释放资源。
+
+YARN运行模式下，不同部署模式下，任务提交流程略有不同。
+
+在Flink on YARN (HA) - Session模式下，首先需要运行一个YARN Application，与之对应地启动一个Container，用于部署JobManager（由于没有任务提交，所以不会启动TaskManager），即开启一个YARN会话，随后进行任务提交，任务提交过程与总体提交流程基本相同。Session模式下，Application通过Client解析成一个或多个Job，随后提交给JobManager。
+
+在Flink on YARN (HA) - Per Job模式下，不需要启动YARN Session，Client直接将Job提交给YARN ResourceManager，随后开启Container，部署JobManager和TaskManager，最后执行任务。Per Job模式下，Application通过Client解析成一个或多个Job，随后提交到YARN ResourceManager。
+
+Flink on YARN (HA) - Application模式与Flink on YARN (HA) - Per Job模式基本相似，只是提交给YARN ResourceManager的不再是具体的Job，而是整个Application。一个Application包含一个或多个Job，这些Job都将在JobManager中被解析出来，并为每个Job启动对应的JobMaster。
+
+## 3、其他重要概念
+
+除了以上介绍的整体架构和核心组件，Flink还有一系列概念需要介绍，这对理解Flink代码是如何一步一步转换成可执行Task，每个Flink Application将转换成多少个Task，以及需要多少Task Slots才能满足Application的运行至关重要，只有清楚这些问题，才能依据实际的业务情况，对Flink集群进行合理的资源配置。
+
+### 1、Parallelism（并行度）
+
+Flink Application的程序结构是为每一条数据定义了一连串的数据处理操作，这些操作被称为Operator，或者”算子“。数据在进入Flink集群后，会依次调用这些Operator。所以Flink Application程序的执行就好像是”铁打的算子，流水的数据“。
+
+在Job提交过程中，Flink程序会被映射成所有Operator按照逻辑顺序连在一起的一个DAG，这个DAG被称为DataFlow Graph。在Flink Web UI上提交完作业后，点击”show plan“就可以看到对应的DataFlow Graph。
+
+Flink Application的程序结构都以Source Operator开始，以Sink Operator结束，中间加以数据处理操作。除了Source Operator和Sink Operator外，数据处理操作不一定是一个Transformation Operator，只有进行数据转换处理的方法调用，才是Transformation Operator。代码中有一些方法的调用，数据是没有进行转换的，只是对数据属性进行了设置，或者是数据发送方式的定义。例如，keyBy()方法调用，broadcast()方法调用。
+
+正如上述所说，Flink对数据的处理方式是：算子不动，数据流动。为了实现流式数据的分布式计算，Flink将Operator复制多份，并分发到多个节点上，流式数据到来后，可以随机进入任何一个节点中进行处理，也可以通过设置进入指定的节点中进行处理。这样，一个Operator任务就被拆分成多个并行的子任务，这些子任务会在不同的节点中进行运算。
+
+在Flink执行过程中，每一个Operator可以包含一个或者多个subTask，这些subTask会在不同的线程、不同的物理机或不同的容器中完全独立地执行。
+
+Operator的subTask的个数称为该Operator的并行度。
+
+一个流程序的并行度，可以认为是所有Operator中最大的并行度。
+
+一个流程序中，不同的Operator可以具有不同的并行度。
+
+**==并行度的设置以及优先级，以下优先级从高到低==**
+
+-   **为每一个Operator单独设置并行度：Operator直接调用`setParallelism()`方法**
+-   **为Application设置全局并行度：流执行环境调用`setParallelism()`方法**
+-   **提交Application时，设置并行度：**
+    -   **Web UI提交，在对应输入框中直接添加并行度**
+    -   **命令行提交，使用-p参数，设置并行度**
+-   **`flink-conf.yaml`配置文件中配置默认并行度：配置`parallelism.default`配置项**
+
+![image-20230302140600577](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302140600577.png)
+
+### 2、Operator Chain（算子链）
+
+根据DataFlow Graph和Operator的并行度，能够计算出每个Application将会产生多少个并行子任务，那么这些并行子任务需要多少的Task Slot呢？这需要考虑到算子之间数据的传输问题。
+
+类似于Spark的宽依赖和窄依赖。
+
+在Flink中，如果上游Operator的数据向下游Operator发送不需要进行Shuffle时，那么会将上游Operator和下游Operator合并成一个”大“的Task，这个”大“的Task将会被放到同一个Task Slot中进行执行，这个”大”的Task称为Operator Chain。基于Operator的合并能够有效减少线程之间的切换和基于缓存的数据交换，在减少延时的同时提高数据处理效率。
+
+如果上游Operator的数据向下游Operator发送需要进行Shuffle时，那么就无法进行Operator合并。
+
+![image-20230302140621237](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302140621237.png)
+
+### 3、DataFlowGraph、Job Graph、Execution Graph和Physical Graph
+
+![image-20230302141920007](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302141920007.png)
+
+-   **DataFlow Graph**
+
+    根据Flink Application代码生成的最初的DAG，用来表示程序的拓扑结构。DataFlowGraph中的节点完全对应代码中的Operator操作。
+
+    一般在Client中生成。
+
+-   **Job Graph**
+
+    DataFlow Graph经过优化后形成Job Graph，主要优化为：根据是否满足窄依赖关系，将多个符合条件的Operator合并在一起，形成Operator China，减少Shuffle过程带来的时间和资源的损耗。
+
+    Job Graph确定了当前Job中所有任务的划分。
+
+    一般在Client中生成，并提交到JobMaster。
+
+-   **Execution Graph**
+
+    JobMaster收到Job Graph后，根据并行度的设置，会形成ExecutionGraph，是调度层最为核心的数据结构。Execution Graph的形成最主要解决了Task之间数据传递的方式。
+
+-   **Physical Graph**
+
+    Execution Graph生成之后，会由JobMaster分发给TaskManager，各个TaskManager会根据Execution Graph部署任务，最终的物理执行过程会形成Physical Graph，这是具体执行层面的图，并不是一个具体的数据结构。
+
+    Physical Graph主要是在Execution Graph的基础上，进一步确定数据存放的位置和收发的具体方式。Physical Graph形成之后，TaskManager就可以对传递来的数据进行计算和处理了。
+
+### 4、Task和Task Slot
+
+每个 worker（TaskManager）都是一个JVM 进程，可以在单独的线程中执行一个或多个 subTask。为了控制一个TaskManager中接受Task的，就有了所谓的Task Slots（至少一个）。
+
+每个Task Slot代表TaskManager中资源的固定子集。例如，具有3个Slot的TaskManager会将其托管内存的1/3用于每个Slot。分配资源意味着subTask不会与其他Job的subTask竞争托管内存。
+
+通过调整Task Slot的数量，用户可以定义subTask如何互相隔离。每个TaskManager有一个Slot，这意味着每个Task组都在单独的 JVM 中运行（例如，可以在单独的容器中启动）。具有多个Slot意味着更多subTask共享同一JVM。同一JVM中的Task共享TCP连接（通过多路复用）和心跳信息。它们还可以共享数据集和数据结构，从而减少了每个Task的开销。
+
+默认情况下，Flink允许subTask共享Slot，即便它们是不同的Task的subTask，只要是来自于同一Job即可。结果就是一个Slot可以支持整个Job的Task链路。允许Slot共享有两个主要优点：
+
+-   Flink集群所需的Task Slot和作业中使用的最大并行度恰好一样。无需计算程序总共包含多少个Task（具有不同并行度）
+-   容易获得更好的资源利用。如果没有Slot 共享，非密集subTask（Source / map()）将占用与密集型subTask（Window）一样多的资源。通过Slot共享，可以充分利用分配的资源，同时确保繁重的subTask在TaskManager之间公平分配
 
