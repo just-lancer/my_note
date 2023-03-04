@@ -2710,7 +2710,7 @@ public void test2() {
 -   java.time.temporal：包括底层框架和扩展特性
 -   java.time.zone：包含时区支持的类
 
-**说明：**大多数开发者指挥用到基础包和format包，也可能会用到temporal包。因此，尽管有68个新的公开类型，大多数开发者，大概将指挥用到其中三分之一。
+**说明：**大多数开发者只会用到基础包和format包，也可能会用到temporal包。因此，尽管有68个新的公开类型，大多数开发者，大概将只会用到其中三分之一。
 
 ### 3.5 LocalDate,LocalTime,LocalDateTime类
 

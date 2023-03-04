@@ -7,7 +7,7 @@
 
 在不同的部署模式下，Flink各组件的启动以及资源获取的方式都有所不同，为此Flink提供了三种不同的部署模式。而在不同的运行环境下，Flink的资源调度和服务启停也都有所不同，Flink根据不同的场景也提供了不同运行模式。
 
-## 1、部署模式
+## 2.1、部署模式
 
 为满足不同场景中，集群资源分配和占用方式的需求，Flink提供了不同的部署模式。这些模式的主要区别在于：集群的生命周期以及资源的分配方式，以及Flink应用中main方法到底在哪里执行：Client还是JobManager。
 
@@ -19,7 +19,7 @@
 >
 >   **==一个算子由于并行度的属性，所以一个算子可以有很多并行子任务。==**
 
-### 1.1 会话模式（Session Mode）
+### 2.1.1 会话模式（Session Mode）
 
 会话模式最为符合常规思维：先启动一个Flink集群，保持一个会话，在这个会话中通过Client提交Application，进而提交Job。
 
@@ -27,7 +27,7 @@
 
 其缺点也是显而易见的，因为资源是共享的，所以当资源不够时，新提交的Job就会失败。此外，如果一个发生故障导致TaskManager宕机，那么所有Job都会受到影响。
 
-### 1.2 单作业模式（Per-Job Mode）
+### 2.1.2 单作业模式（Per-Job Mode）
 
 会话模式会因为资源共享导致很多问题，所以为了隔离每个Job所需要的资源，Flink还提供了单作业模式。
 
@@ -37,17 +37,17 @@
 
 需要注意的是，Flink本身无法直接这样运行，所以单作业模式一般都需要借助一些资源调度框架来启动集群，如，YARN、Kubernetes等。
 
-### 1.3 应用模式（Application Mode）
+### 2.1.3 应用模式（Application Mode）
 
 会话模式和单作业模式下，应用代码都是在Client中执行，然后将执行的二进制数据和相关依赖提交给JobManager。这种方式存在的问题是，Client需要占用大量的网络带宽，去下载依赖和将二进制数据发送给JobManager，并且很多情况下提交Job用的都是同一个Client，这样就会加重Client所在节点的资源消耗。
 
 Flink解决这个问题的思路就是：把产生问题的组件干掉，把Client干掉，直接把Application提交到JobManager上运行，进而解析出DataGraph和JobGraph。除此之外，应用模式与单作业模式没有区别，都是提交Job之后才创建集群，单作业模式使用Client执行代码并提交Job，应用模式直接由JobManager执行应用程序，即使Application包含多个Job，也只创建一个集群。
 
-## 2、运行模式
+## 2.2、运行模式
 
 ==**本文档所使用Flink版本为Flink 1.13**==
 
-### 1.1 Local模式（本地模式）
+### 2.2.1 Local模式（本地模式）
 
 Local模式部署非常简单，直接下载并解压Flink安装包即可，不用行进额外的配置。因此，Local模式下，Flink的数据均存储在本地。
 
@@ -95,7 +95,7 @@ Local模式部署非常简单，直接下载并解压Flink安装包即可，不�
 
 -   **执行命令，停止Flink Local模式：`stop-cluster.sh`**
 
-### 1.2 Standalone模式（独立部署模式）
+### 2.2.2 Standalone模式（独立部署模式）
 
 Standalone模式是一种独立运行的集群模式，这种模式下，Flink不依赖任何外部的资源管理平台，集群的资源调度、数据处理、容错机制和一致性检查点等都由集群自己管理。Standalone模式的优点是，不需要任何外部组件，缺点也很明显，当集群资源不足或者出现故障，由于没有故障自动转移和资源自动调配，需要手动处理，会导致Flink任务失败。
 
@@ -144,7 +144,7 @@ Flink集群规划
 
 **==至此，Flink Standalone运行模式已经配置完成，下面将进行集群启动和停止==**
 
-#### 1.2.1 Standalone运行模式下的会话模式（Standalone - Session模式）
+#### 2.2.2.1 Standalone运行模式下的会话模式（Standalone - Session模式）
 
 -   **来到JobManager服务所在的hadoop132节点，执行命令，启动Flink Standalone运行模式的会话模式：`start-cluster.sh`。`start-cluster.sh`脚本将依次启动以下服务：**
 
@@ -182,7 +182,7 @@ Flink集群规划
 
 >   **Standalone运行模式下没有单作业部署模式，一方面，Flink本身无法直接以单作业模式启动集群，需要借助资源调度组件；另一方面，Flink本身也没有提供相应的脚本启动单作业模式。**
 
-#### 1.2.2 Standalone运行模式下的应用模式（Standalone - Application模式）
+#### 2.2.2.2 Standalone运行模式下的应用模式（Standalone - Application模式）
 
 正如前面对应用模式的介绍，应用模式下，直接将Application提交到JobManager上运行，进而解析出DataFlowGraph和JobGraph。应用模式下，需要为每一个Application创建一个Flink集群，进而开启一个JobManager。当该JobManager执行结束后，该Flink集群也就关闭了。
 
@@ -264,7 +264,7 @@ Flink集群规划
 >
 >   **==手动关闭JobManager：`standalone-job.sh stop --job-classname <Flink Application的全类名>`==**
 
-#### 1.2.3 Standalone运行模式的高可用部署（Standalone - HA模式）
+#### 2.2.2.3 Standalone运行模式的高可用部署（Standalone - HA模式）
 
 Standalone的HA模式是通过在集群中配置并运行多个JobManager的方式避免出现单点故障的问题。
 
@@ -376,7 +376,7 @@ Standalone的HA模式是通过在集群中配置并运行多个JobManager的方�
 
 -   **停止zookeeper集群：`zk_mine.sh stop`**
 
-### 1.3 YARN模式
+### 2.2.3 YARN模式
 
 Standalone模式由Flink自身提供资源调度，无需其他框架，但存在的问题是，当集群资源不够时，Flink任务提交就会失败，需要进行手动的资源扩充。
 
@@ -428,7 +428,7 @@ Flink YARN运行模式前置准备工作：
 
 **==Flink YARN运行模式不需要修改其他配置文件==**
 
-#### 1.3.1 YARN运行模式下的会话模式（YARN - Session模式）
+#### 2.2.3.1 YARN运行模式下的会话模式（YARN - Session模式）
 
 不同于YARN的其他模式，YARN -Session模式需要先启动一个YARN会话，进而在会话中来启动Flink集群。
 
@@ -474,7 +474,7 @@ Flink YARN运行模式前置准备工作：
     -   **当使用-d参数，使YARN - Session会话后台启动时，使用命令可以停止YARN - Session会话：`echo "stop" | yarn-session.sh -id application_XXXXX_XXX`。其中，`application_XXXXX_XXX`为YARN Application ID**
 
 
-#### 1.3.2 YARN运行模式下的单作业模式（YARN - Per Job模式）
+#### 2.2.3.2 YARN运行模式下的单作业模式（YARN - Per Job模式）
 
 在集成了Hadoop环境之后，可以使用YARN进行资源调度，所以可以部署YARN运行模式的单作业部署模式。
 
@@ -502,7 +502,7 @@ YARN运行模式的单作业部署模式无需额外的配置，通过不同的�
 
 >   **注意：YARN会为Application中的每一个Job开启一个Flink集群，当Job执行完成时，该Job所在的Flink集群就会自动释放资源。**
 
-#### 1.3.3 YARN运行模式下的应用模式（YARN - Application模式）
+#### 2.2.3.3 YARN运行模式下的应用模式（YARN - Application模式）
 
 应用模式和会话模式、单作业模式相同，不需要额外的进行配置，直接执行Application提交命令即可。
 
@@ -517,7 +517,7 @@ YARN运行模式的单作业部署模式无需额外的配置，通过不同的�
 >
 >   **例如：`flink run-application -t yarn-application -Dyarn.provided.lib.dirs="hdfs://myhdfs/my-remote-flink-dist-dir" hdfs://myhdfs/jars/my-application.jar`**
 
-#### 1.3.4 YARN运行模式下的高可用模式（YARN - HA模式）
+#### 2.2.3.4 YARN运行模式下的高可用模式（YARN - HA模式）
 
 不同于Standalone - HA模式，是同时启动多个JobManager以避免单点故障的问题。YARN - HA模式是利用YARN的重试次数来实现高可用的，当JobManager宕机后，YARN会尝试重启JobManager。
 
@@ -563,7 +563,7 @@ YARN - HA模式需要进行额外的参数配置：
 
 -   **启动YARN HA集群：`start-yarn.sh`**
 
-##### 1.3.4.1 Flink on YARN HA - Session模式
+##### 2.2.3.4.1 Flink on YARN HA - Session模式
 
 -   **启动YARN - Session - HA模式：`yarn-session.sh -nm test`。HA部署下，会话模式启动后仍旧会给出Flink Web UI，当JobManager宕机并被YARN重启后，Web UI会发生变化，而已提交的任务会自动重新提交。Web UI发生变化后，可以通过YARN ResourceManger界面的`Tracking UI`重新进入。**
 -   **使用命令行或者Web UI可以进行任务提交**
@@ -571,23 +571,23 @@ YARN - HA模式需要进行额外的参数配置：
     -   **当会话是前台启动时，可以直接终止会话**
     -   **当会话是后台启动时，启动日志会给出停止YARN会话的命令：`echo "stop" | yarn-session.sh -id application_XXXXX_XXX`**
 
-##### 1.3.4.2 Flink on YARN HA - Per Job模式
+##### 2.2.3.4.2 Flink on YARN HA - Per Job模式
 
 -   **不同于Session模式，Per Job模式直接提交任务即可：`flink run -t yarn-per-job -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
 -   **当Flink任务执行完成时，会自动停止该Flink集群，也可以通过Flink Web UI手动停止，或者通过YARN命令停止Flink集群所对应的任务**
 
-##### 1.3.4.3 Flink on YARN HA - Application模式
+##### 2.2.3.4.3 Flink on YARN HA - Application模式
 
 -   **与Per Job模式相同，Application模式直接提交任务即可：`flink run-application -t yarn-application -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
 -   **当Flink任务执行完成时，会自动停止该Flink集群，也可以通过Flink Web UI手动停止，或者通过YARN命令停止Flink集群所对应的任务**
 
-## 3、Flink任务提交方式和流程
+## 2.3、Flink任务提交方式和流程
 
 Flink任务提交方式分为两种，一种是通过Flink集群的Web UI进行任务提交；另一种方式是通过命令行的方式。
 
 在不同的运行模式以及部署模式下，Flink任务的命令行提交方式略有不同，以下将逐一介绍。
 
-### 3.1 通过Web UI的方式提交任务
+### 2.3.1 通过Web UI的方式提交任务
 
 通过Web UI的方式提交任务通常用于Session部署模式中，原因在于，通常先要能访问Web UI。对于Per Job模式和Application模式，需要先启动Hadoop环境（HDFS和YARN），然后直接向YARN提交任务，当YARN为该Flink任务分配好资源，并部署了JobManager后，用户才能访问Web UI。所以这两种模式都是任务提交后才能访问Web UI，因此不能通过Web UI的方式提交任务，只能使用命令行提交任务。对于Session模式，首先需要先启动一个YARN Session，当YARN Session启动好之后，便可以访问Web UI，并通过Web UI提交任务。
 
@@ -599,7 +599,7 @@ Flink任务提交方式分为两种，一种是通过Flink集群的Web UI进行�
 
 -   **任务提交完成后，可以通过左侧导航栏的JobManager和TaskManager对任务进行监控和撤销**
 
-### 3.2 通过命令行的方式提交任务
+### 2.3.2 通过命令行的方式提交任务
 
 Per Job模式和Application模式只能通过命令行的方式提交任务，在前面测试时已经展示，现在统一进行介绍。
 
@@ -651,7 +651,7 @@ Flink是一个需要有效分配和管理计算资源，用以进行流数据处
 
 下面将对Flink的体系架构，各个主要组件如何协调工作，以执行流数据处理，以及如何从故障中恢复。
 
-## 1、Flink体系架构
+## 3.1、Flink体系架构
 
 Flink运行时架构主要包含两个主要的组件：JobManager和TaskManager。
 
@@ -663,17 +663,17 @@ Flink运行时架构主要包含两个主要的组件：JobManager和TaskManager
 
 JobManager和TaskManager拥有不同的启动方式：直接在机器上作为Standalone集群启动、在容器中启动、或者通过YARN等资源框架管理并启动。TaskManager在启动之后会向JobManager汇报自己的状态以及资源情况，进而能够被JobManager分配任务。
 
-### 1.1 JobManager
+### 3.1.1 JobManager
 
 JobManager有许多与协调Flink应用程序，分布式执行时相关的职责：JobManager决定何时调度下一个task(或一组task)，对已完成的task或执行失败做出反应，协调checkpoint，协调故障恢复等等。JobManager由三个不同的部分组成:
 
-#### 1.1.1 JobMaster
+#### 3.1.1.1 JobMaster
 
 JobMaster是JobManager中最核心的组件，负责管理单个Job的执行。Flink集群中可以同时运行多个Job，每个Job都有自己的JobMaster。
 
 在Job提交时，Client会将jar包和已经解析好的DataFlowGraph和JobGraph发送给JobMaster，随后JobMaster会将JobGraph转换成ExecutionGraph，并分发到TaskManager中执行。在Job运行的过程中，JobMaster还会负责所有需要中央协调的操作，比如CheckPoints的协调。
 
-#### 1.1.2 ResourceManager
+#### 3.1.1.2 ResourceManager
 
 ResourceManager主要负责资源的分配和管理，一个Flink进群中只有一个。在Flink集群中，资源主要指的是TaskManager的Task Slots，Task Slot是Flink集群资源调度的基本单位，主要包含CPU资源和内存资源。Flink集群运行的每一个Task都必须要分配到一个Slot上。
 
@@ -687,15 +687,15 @@ Flink的ResourceManager，针对不同的环境和资源调度框架，都提供
 
 此外，Flink的ResourceManager还负责停止空闲的TaskManager，释放集群资源。
 
-#### 1.1.3 Discatcher
+#### 3.1.1.3 Discatcher
 
 Dispatcher提供了一个用于提交Flink Application的REST接口，并会为每个提交的Job启动一个新的 JobMaster。它还运行 Flink WebUI 用来提供Job执行信息。
 
-### 1.2 TaskManager
+### 3.1.2 TaskManager
 
 TaskManager又被称为workers，用于进行数据流的具体计算任务，同时能够缓冲数据流，以及与其他TaskManager进行数据交换。
 
-## 2、Job提交流程
+## 3.2、Job提交流程
 
 Job总体提交流程
 
@@ -719,11 +719,11 @@ YARN运行模式下，不同部署模式下，任务提交流程略有不同。
 
 Flink on YARN (HA) - Application模式与Flink on YARN (HA) - Per Job模式基本相似，只是提交给YARN ResourceManager的不再是具体的Job，而是整个Application。一个Application包含一个或多个Job，这些Job都将在JobManager中被解析出来，并为每个Job启动对应的JobMaster。
 
-## 3、其他重要概念
+## 3.3、其他重要概念
 
 除了以上介绍的整体架构和核心组件，Flink还有一系列概念需要介绍，这对理解Flink代码是如何一步一步转换成可执行Task，每个Flink Application将转换成多少个Task，以及需要多少Task Slots才能满足Application的运行至关重要，只有清楚这些问题，才能依据实际的业务情况，对Flink集群进行合理的资源配置。
 
-### 1、Parallelism（并行度）
+### 3.3.1、Parallelism（并行度）
 
 Flink Application的程序结构是为每一条数据定义了一连串的数据处理操作，这些操作被称为Operator，或者”算子“。数据在进入Flink集群后，会依次调用这些Operator。所以Flink Application程序的执行就好像是”铁打的算子，流水的数据“。
 
@@ -752,7 +752,7 @@ Operator的subTask的个数称为该Operator的并行度。
 
 ![image-20230302140600577](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302140600577.png)
 
-### 2、Operator Chain（算子链）
+### 3.3.2、Operator Chain（算子链）
 
 根据DataFlow Graph和Operator的并行度，能够计算出每个Application将会产生多少个并行子任务，那么这些并行子任务需要多少的Task Slot呢？这需要考虑到算子之间数据的传输问题。
 
@@ -764,7 +764,7 @@ Operator的subTask的个数称为该Operator的并行度。
 
 ![image-20230302140621237](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302140621237.png)
 
-### 3、DataFlowGraph、Job Graph、Execution Graph和Physical Graph
+### 3.3.3、DataFlowGraph、Job Graph、Execution Graph和Physical Graph
 
 ![image-20230302141920007](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302141920007.png)
 
@@ -792,7 +792,7 @@ Operator的subTask的个数称为该Operator的并行度。
 
     Physical Graph主要是在Execution Graph的基础上，进一步确定数据存放的位置和收发的具体方式。Physical Graph形成之后，TaskManager就可以对传递来的数据进行计算和处理了。
 
-### 4、Task和Task Slot
+### 3.3.4、Task和Task Slot
 
 每个 worker（TaskManager）都是一个JVM 进程，可以在单独的线程中执行一个或多个 subTask。为了控制一个TaskManager中接受Task的，就有了所谓的Task Slots（至少一个）。
 
@@ -804,4 +804,539 @@ Operator的subTask的个数称为该Operator的并行度。
 
 -   Flink集群所需的Task Slot和作业中使用的最大并行度恰好一样。无需计算程序总共包含多少个Task（具有不同并行度）
 -   容易获得更好的资源利用。如果没有Slot 共享，非密集subTask（Source / map()）将占用与密集型subTask（Window）一样多的资源。通过Slot共享，可以充分利用分配的资源，同时确保繁重的subTask在TaskManager之间公平分配
+
+# 四、DataStream API
+
+Flink 有非常灵活的分层API设计，其中的核心层就是DataStream / DataSet API。由于新版本已经实现了流批一体，DataSet API将被弃用，官方推荐统一使用 DataStream API 处理流数据和批数据。**==下面主要并且默认介绍基本的DataStream API用法。==**
+
+DataStream（数据流）本身是Flink中一个用来表示数据集合的类（Class），编写Flink代码其实就是基于这种数据类型的处理，所以这套核心API就以DataStream命名。对于批处理和流处理，都可以用这同一套API来实现。
+
+DataStream在用法上有些类似于Java集合，但又有所不同。Flink Application在代码中往往并不关心DataStream中具体的数据，而只是用API定义出一连串的操作来处理它们，即数据流的“转换”。
+
+一个Flink Application，其实就是对DataStream的各种转换。具体来说，程序结构基本上由以下几部分构成：
+
+-   **创建流执行环境（Execution Environment）**  
+-   **读取数据源（Source）**
+-   **定义数据转换操作（Transformations）**
+-   **定义计算结果的输出（Sink）**
+-   **执行流/批数据处理（Execute）**
+
+其中，获取环境和执行流/批数据处理，都可以认为是针对执行环境的操作，所以在编写Flink Application的过程中，主要关注Execution Environment、Source、Transform、Sink。
+
+![image-20230302165350717](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302165350717.png)
+
+## 0、引入Flink项目的依赖
+
+为了能在IDEA开发环境中编写并运行Flink代码，需要在module的pom.xml中引入Flink项目的相关依赖，包含，flink-java、flink-streaming-java，以及flink-clients（Flink客户端，可以省略）。另外为了便于查看运行日志，还引入slf4j和log4j进行日志管理。
+
+```xml
+<properties>
+    <flink.version>1.13.0</flink.version>
+    <java.version>1.8</java.version>
+    <!-- 定义Scala版本。Flink底层实现是Java代码，但Flink架构中使用了Akka来实现底层的分布式通信，而Akka是使用Scala开发的 -->
+    <scala.binary.version>2.12</scala.binary.version>
+    <slf4j.version>1.7.30</slf4j.version>
+</properties>
+
+<dependencies>
+    <!-- 引入 Flink 相关依赖-->
+    <!-- flink-java -->
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-java</artifactId>
+        <version>${flink.version}</version>
+    </dependency>
+
+    <!-- flink-streaming -->
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-streaming-java_${scala.binary.version}</artifactId>
+        <version>${flink.version}</version>
+    </dependency>
+
+    <!-- flink-client -->
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-clients_${scala.binary.version}</artifactId>
+        <version>${flink.version}</version>
+    </dependency>
+
+    <!-- 引入日志管理相关依赖-->
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>${slf4j.version}</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-log4j12</artifactId>
+        <version>${slf4j.version}</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.apache.logging.log4j</groupId>
+        <artifactId>log4j-to-slf4j</artifactId>
+        <version>2.14.0</version>
+    </dependency>
+</dependencies>
+
+<!-- 配置打包插件 -->
+<build>
+        <plugins>
+                <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-assembly-plugin</artifactId>
+                        <version>3.0.0</version>
+
+                        <configuration>
+                                <descriptorRefs>
+                                        <descriptorRef>jar-with-dependencies</descriptorRef>
+                                </descriptorRefs>
+                        </configuration>
+
+                        <executions>
+                                <execution>
+                                        <id>make-assembly</id>
+                                        <phase>package</phase>
+                                        <goals>
+                                                <goal>single</goal>
+                                        </goals>
+                                </execution>
+                        </executions>
+                </plugin>
+        </plugins>
+</build>
+```
+
+配置日志管理：在src/main/resources目录下创建文件`log4j.properties`，添加以下内容
+
+```txt
+log4j.rootLogger=error, stdout
+log4j.appender.stdout=org.apache.log4j.ConsoleAppender
+log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
+log4j.appender.stdout.layout.ConversionPattern=%-4r [%t] %-5p %c %x - %m%n
+```
+
+## 4.1、创建执行环境（Execution Environment）
+
+Flink Application可以在不同的上下文环境中运行：本地JVM、远程集群。不同的环境，Application的提交运行过程会有所不同，所以，在提交作业执行计算时，必须先获取当前Flink的运行环境，从而建立与Flink服务之间的联系。只有获取运行环境的上下文信息，才能将具体的任务调度到不同的TaskManager执行。
+
+**流执行环境的创建均是调用`StreamExecutionEnvironment`类的静态方法来创建的。**
+
+-   **调用`getExecutionEnvironment()`方法创建流执行环境：最常用的创建执行环境的方法**
+
+    ```java
+    // 有重载方法
+    StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    ```
+
+    `getExecutionEnvironment()`方法会根据当前运行的上下文直接得到执行环境。即，如果程序是独立运行的，就返回一个本地执行环境；如果是创建了jar包，然后从命令行调用jar并提交到集群执行，那么就返回集群的执行环境。
+
+-   **调用`createLocalEnvironment()`方法创建本地执行环境：**
+
+    ```java
+    // 有重载方法
+    LocalStreamEnvironment env = StreamExecutionEnvironment.createLocalEnvironment();
+    ```
+
+-   **调用`createRemoteEnvironment(String host, int port, String... jarFiles)`方法创建集群执行环境**
+
+    ```java
+    // 有重载方法
+    StreamExecutionEnvironment env = StreamExecutionEnvironment
+                    .createRemoteEnvironment(
+                            "host", // 集群地址，JobManager所在节点地址
+                            port, // 端口号，JobManager进程的端口号
+                            "jarFiles" // Application所在的jar包，可变形参，能同时添加多个jar包
+                    );
+    ```
+
+**执行环境创建后，可以对执行环境进行配置，例如，全局并行度设置，算子链禁用，声明时间语义，以及配置容错机制。**
+
+>   **==批处理执行环境的创建（了解）==**
+>
+>   类似于流执行环境的创建，批执行环境的创建是通过调用`ExecutionEnvironment`类的静态方法。
+>
+>   ```java
+>   // 批执行环境的创建
+>   ExecutionEnvironment executionEnvironment = ExecutionEnvironment.getExecutionEnvironment();
+>   LocalEnvironment localEnvironment = ExecutionEnvironment.createLocalEnvironment();
+>   CollectionEnvironment collectionsEnvironment = ExecutionEnvironment.createCollectionsEnvironment();
+>   ExecutionEnvironment remoteEnvironment = ExecutionEnvironment.createRemoteEnvironment(
+>           "host", // 集群地址，JobManager所在节点的地址
+>           6123, // JobManager的服务端口
+>           "jars" // Flink Application所在jar包
+>   );
+>   ```
+>
+>   在Flink 1.12.0版本中，Flink DataStream API新增了一个重要特性，可以支持不同的执行模式，通过简单的设置就可以让Flink程序在流处理和批处理之间切换，进而实现了API上的批流统一，因此从Flink 1.12.0版本开始，DataSet API就开始逐步弃用了。
+>
+>   -   **流执行模式（STREAMING）**
+>
+>       这是DataStream API的默认模式，一般用于需要持续实时处理的无界数据流 。
+>
+>   -   **批执行模式（BATCH）**
+>
+>       专门用于批处理的执行模式, 这种模式下， Flink 处理作业的方式类似于 MapReduce 框架。
+>
+>       ```bash
+>       # 通过命令行配置BATCH执行模式
+>       # 通过命令提交任务时，利用参数-Dexecution.runtime-mode配置执行模式
+>       flink run -Dexecution.runtime-mode=BATCH ...
+>       ```
+>
+>       ```java
+>       // 在代码中配置执行模式
+>       StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+>       env.setRuntimeMode(RuntimeExecutionMode.BATCH);
+>       ```
+>
+>   -   **自动模式（AUTOMATIC）**
+>
+>       在这种模式下，将由程序根据输入数据源是否有界，来自动选择执行模式。
+>
+>       配置执行模式的方式，同上。
+
+## 4.2、Source Operator
+
+Flink程序中，Source用于对接数据源，将数据读取到Flink集群中，进行才能够进行数据处理。
+
+Flink可以从各种来源获取数据，然后构建 DataStream 进行转换处理。一般将数据的输入来源称为数据源(data source)，而读取数据的算子就是源算子（Source Operator）。
+
+### 4.2.1 从集合中读取数据
+
+这是最简单的数据读取方式。在代码中直接创建Java集合，将需要被Flink读取的数据添加到集合中，最后通过流执行环境对象调用`fromCollection()`方法，将数据读取到Flink中。
+
+从集合中读取数据，相当于将数据临时存储到内存中，作为数据源使用，一般用于测试。
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-03 10:54
+ * @desc 从集合中读取数据
+ */
+public class C001_ReadMemorySource {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流式执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        // 设置全局并行度为1，便于控制台数据打印
+        env.setParallelism(1);
+
+        // TODO 2、创建集合，作为数据源
+        ArrayList<String> arrayListSource = new ArrayList<>();
+        arrayListSource.add("hello world");
+        arrayListSource.add("hello java");
+        arrayListSource.add("hello scala");
+        arrayListSource.add("hello python");
+        arrayListSource.add("hello shell");
+        arrayListSource.add("hello flink");
+        arrayListSource.add("hello spark");
+
+        // TODO 3、从集合中读取数据源
+        DataStreamSource<String> stringDataStreamSource = env.fromCollection(arrayListSource);
+
+        // TODO 4、直接在控制台打印数据源
+        stringDataStreamSource.print();
+
+        // TODO 5、执行流式数据处理
+        env.execute();
+    }
+}
+```
+
+除了将数据添加到集合，再通过`fromCollection()`方法读取数据外，还可以通过`fromElements()`方法，直接读取列举的元素。
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-03 10:54
+ * @desc 从集合中读取数据
+ */
+public static void main(String[] args) throws Exception {
+    // TODO 1、创建流执行环境
+    StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    env.setParallelism(1);
+
+    // TODO 2、利用fromElement()方法，读取数据源
+    DataStreamSource<String> stringDataStreamSource = env.fromElements(
+            "hello world",
+            "hello java",
+            "hello scala",
+            "hello python",
+            "hello flink"
+    );
+
+    // TODO 3、控制台打印数据流
+    stringDataStreamSource.print();
+
+    // TODO 4、执行流数据处理
+    env.execute();
+}
+```
+
+### 4.2.2 读取文本文件
+
+读取文本文件可以读取本地文本文件，也可以读取文件系统的文件。
+
+利用流执行环境对象调用`readTextFile()`方法，传入文本文件的路径，进行数据读取。
+
+**需要说明的是，在IDEA开发环境中读取文件系统中的文本文件时，需要添加相关的依赖，例如读取Hadoop的文件，需要添加以下的依赖：**
+
+```xml
+<dependency>
+    <groupId>org.apache.hadoop</groupId>
+    <artifactId>hadoop-client</artifactId>
+    <version>2.7.5</version>
+</dependency>
+```
+
+在读取文本文件之前首先要准备文本文件。创建文件`input/text2_world.txt`，并添加以下内容
+
+```txt
+hello world
+hello java
+hello scala
+hello python
+hello shell
+hello hadoop
+hello flume
+hello hive
+hello kafka
+hello dataX
+hello maxwell
+hello spark
+hello flink
+```
+
+将文件上传到Hadoop文件系统中：`hadoop -put /home/justlancer/text2_world.txt /input`
+
+```java
+/**
+ * @author shaco
+ * @create 2023-03-03 13:22
+ * @desc 读取文本文件作为数据源
+ */
+public class C002_ReadCharacterFileSource {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取文本文件
+        // 读取本地文本文件
+        DataStreamSource<String> stringDSLocal = env.readTextFile("C:\\my_workplace_git\\flink_api\\input\\text2_world.txt");
+        // 读取文件系统中的文本文件
+        DataStreamSource<String> stringDSFileSystem = env.readTextFile("hdfs://hadoop132:8020/flink_input/text2_world.txt");
+
+        // TODO 3、打印数据流
+        stringDSLocal.print(">>>>");
+        stringDSFileSystem.print("====");
+
+        // TODO 4、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+### 4.2.3 读取Socket文本流数据
+
+从文本文件中读取数据，可以模拟有界数据流；为了模拟无界数据流，可以读取Socket文本流数据。
+
+读取Socket文本流数据是通过流执行环境调用`socketTextStream()`方法，传入地址和端口号，进行数据读取。
+
+```java
+/**
+ * @author shaco
+ * @create 2023-03-03 14:47
+ * @desc 读取socket文本流
+ */
+public class C003_ReadSocketTextSource {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取Socket文本流
+        DataStreamSource<String> socketTextStream = env.socketTextStream("hadoop132", 9999);
+
+        // TODO 3、打印数据流
+        socketTextStream.print();
+
+        // TODO 4、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+### 4.2.4 读取Kafka
+
+### 4.2.5 自定义Source
+
+在测试时，如果以上现有Source的实现还不能满足需求，那么可以自定义Source，并通过流执行环境调用`addSource()`方法，读取自定义数据源。
+
+具体步骤为，自定义类实现`SourceFunction`接口，并重写其两个抽象方法`run()`和`cancel()`。
+
+-   **`run()`方法，在方法中，通过`SourceContext`对象调用`collect()`可以发送数据。为了模拟流式数据，一般需要在`run()`方法中定义一个`while()循环，不断向下游发送数据`**
+-   **`cancel()`方法，用于取消向下游发送数据，当Flink程序终止时，会自动调用该方法，也可以在需要的时候创建对象，手动调用`cancel()`方法。典型的自定义流式数据源：在类中声明一个`Boolean`类型的变量`isRunning`，在`run()`方法的`while()`循环中调用，在`cancel()`方法中改变`isRunning`的取值。**
+
+>   **定义流式数据的数据结构，即定义一个类**
+>
+>   ```java
+>   public class WebPageAccessEvent {
+>       public String userName;
+>       public String url;
+>       public String accessTime;
+>   
+>       public WebPageAccessEvent(){
+>   
+>       }
+>   
+>       public WebPageAccessEvent(String userName, String url, String accessTime) {
+>           this.userName = userName;
+>           this.url = url;
+>           this.accessTime = accessTime;
+>       }
+>   
+>       @Override
+>       public String toString() {
+>           return "WebPageAccessEvent{" +
+>                   "userName='" + userName + '\'' +
+>                   ", url='" + url + '\'' +
+>                   ", accessTime=" + accessTime +
+>                   '}';
+>       }
+>   }
+>   ```
+>
+>   **Flink POJO类的特点：**
+>
+>   -   共有类
+>   -   共有属性
+>   -   无参构造器
+>   -   属性可序列化
+>
+>   Flink会将具有这些特点的类作为一种特殊的POJO数据类型来对待，以便于数据的解析和序列化。类中重写toString()方法只是为了便于测试观察数据。
+>
+>   POJO类类似于Scala中的样例类。
+
+**自定义数据源：**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-03 15:30
+ * @desc 自定义网页访问事件数据源
+ */
+public class WebPageAccessEventSource implements SourceFunction<WebPageAccessEvent> {
+    // 自定义数据源，每隔一秒发送一次数据，总共发送100条数据
+    public Boolean isRunning = true;
+    public Integer count = 0;
+
+    public final String[] users = {"Anna", "Bob", "Carter", "David", "Eric", "Frank", "Green", "Helen", "Jerry", "Kitty"};
+    public final String[] urls = {"./start", "./market", "./advertising", "./introduction", "./home", "./login", "./register", "./customer", "./searcher", "./set", "./detail", "./feedback"};
+    public String user;
+    public String url;
+
+    @Override
+    public void run(SourceContext<WebPageAccessEvent> ctx) throws Exception {
+        Random random = new Random();
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss");
+
+        while (isRunning && count <= 100) {
+            user = users[random.nextInt(users.length - 1)];
+            url = urls[random.nextInt(urls.length)];
+            LocalDateTime now = LocalDateTime.now();
+            String dateTime = dateTimeFormatter.format(now);
+
+            ctx.collect(new WebPageAccessEvent(user, url, dateTime));
+            count++;
+
+            Thread.sleep(1000);
+        }
+
+        WebPageAccessEventSource stopObject = new WebPageAccessEventSource();
+        stopObject.cancel();
+    }
+
+    @Override
+    public void cancel() {
+        isRunning = false;
+    }
+}
+```
+
+**读取自定义数据源：**
+
+```java
+/**
+ * @author shaco
+ * @create 2023-03-03 15:27
+ * @desc 读取用户自定义数据源
+ */
+public class C005_UserDefinedSource {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取自定义数据源
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+
+        // TODO 3、打印数据流
+        webPageAccessEventDS.print();
+
+        // TODO 4、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**==值得说明的是，通过实现`SourceFunction`接口创建的数据源，其并行度默认为1，并且无法设置并行度，强行设置并行度，会报错。如果想创建并行数据源，那么需要继承`RichParallelSourceFunction`抽象类，同样实现`run()`方法和`cancel()`方法即可，代码逻辑与实现`SourceFunction`接口完全相同。==**
+
+**自定义并行数据源：**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-03 17:18
+ * @desc 自定义网页访问事件并行数据源
+ */
+public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction<WebPageAccessEvent> {
+    // 自定义数据源，每隔一秒发送一次数据，总共发送100条数据
+    public Boolean isRunning = true;
+    public Integer count = 0;
+
+    public final String[] users = {"Anna", "Bob", "Carter", "David", "Eric", "Frank", "Green", "Helen", "Jerry", "Kitty"};
+    public final String[] urls = {"./start", "./market", "./advertising", "./introduction", "./home", "./login", "./register", "./customer", "./searcher", "./set", "./detail", "./feedback"};
+    public String user;
+    public String url;
+
+    @Override
+    public void run(SourceContext ctx) throws Exception {
+        Random random = new Random();
+        DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss");
+
+        while (isRunning && count <= 100) {
+            user = users[random.nextInt(users.length - 1)];
+            url = urls[random.nextInt(urls.length)];
+            LocalDateTime now = LocalDateTime.now();
+            String dateTime = dateTimeFormatter.format(now);
+
+            ctx.collect(new WebPageAccessEvent(user, url, dateTime));
+            count++;
+
+            Thread.sleep(1000);
+
+            ParallelWebPageAccessEventSource stopObject = new ParallelWebPageAccessEventSource();
+            stopObject.cancel();
+        }
+    }
+
+    @Override
+    public void cancel() {
+        isRunning = false;
+    }
+}
+```
 
