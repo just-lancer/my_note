@@ -91,7 +91,7 @@ Local模式部署非常简单，直接下载并解压Flink安装包即可，不�
     1140 Jps
     ```
 
--   **此时访问`hadoop132:8081`可以对Flink进行监控和任务提交**![image-20230227142736371](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230227142736371.png)
+-   **此时访问`hadoop132:8081`可以对Flink进行监控和任务提交**![image-20230227142736371](./03-Flink.assets/image-20230227142736371.png)
 
 -   **执行命令，停止Flink Local模式：`stop-cluster.sh`**
 
@@ -122,7 +122,7 @@ Flink集群规划
 
 -   **执行命令，使环境变量生效：`source /etc/profile`**
 
--   **JobManager节点配置：`vim /opt/module/flink-1.13.0-standalone/conf/flink-conf.yaml`**![image-20230227151242157](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230227151242157.png)
+-   **JobManager节点配置：`vim /opt/module/flink-1.13.0-standalone/conf/flink-conf.yaml`**![image-20230227151242157](./03-Flink.assets/image-20230227151242157.png)
 
 -   **TaskManager节点配置：`vim /opt/module/flink-1.13.0-standalone/conf/workers`**
 
@@ -176,7 +176,7 @@ Flink集群规划
     >
     >   **==注意二：在虚拟机上操作时，如果在测试了Local模式后，立刻进行Standalone模式的部署，在执行`start-cluster.sh`脚本时，可能会出现启动的仍旧是Local模式的Flink服务，而不是Standalone模式的Flink集群，即使你的环境变量配置的没有问题。出现这个问题的原因不清楚，解决这个问题的方法是，重启虚拟机即可。==**
 
--   **访问`hadoop132:8081`，进入Standalone模式的Web UI，对Flink集群进行监控**![image-20230228103044465](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230228103044465.png)
+-   **访问`hadoop132:8081`，进入Standalone模式的Web UI，对Flink集群进行监控**![image-20230228103044465](./03-Flink.assets/image-20230228103044465.png)
 
 -   **执行命令，停止Standalone - Session模式的Flink集群：`stop-cluster.sh`**
 
@@ -354,7 +354,7 @@ Standalone的HA模式是通过在集群中配置并运行多个JobManager的方�
     2527 Jps
     ```
 
--   **访问Flink的Web UI，访问`hadoop132:8081`，或者`hadoop133:8081`均看到Flink的Web页面，均可在页面上提交任务以及监控任务运行状态。如果需要查看哪个节点为leader，那么需要查看Zookeeper的节点信息。**![image-20230228165230194](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230228165230194.png)![image-20230228165253197](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230228165253197.png)
+-   **访问Flink的Web UI，访问`hadoop132:8081`，或者`hadoop133:8081`均看到Flink的Web页面，均可在页面上提交任务以及监控任务运行状态。如果需要查看哪个节点为leader，那么需要查看Zookeeper的节点信息。**![image-20230228165230194](./03-Flink.assets/image-20230228165230194.png)![image-20230228165253197](./03-Flink.assets/image-20230228165253197.png)
 
 -   **在Zookeeper中查看JobManager的主备信息：**
 
@@ -593,9 +593,9 @@ Flink任务提交方式分为两种，一种是通过Flink集群的Web UI进行�
 
 综上，适合通过Web UI提交任务的模式有：Local、Standalone - Session、Flink on YARN (HA) - Session。
 
--   **访问Web UI地址，并点击左侧导航栏：`Submit New Job`**![image-20230301190302963](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190302963.png)
--   **点击右上角`Add New`上传Flink任务对应的jar包**![image-20230301190400272](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190400272.png)![image-20230301190530311](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190530311.png)
--   **点击提交的jar包，进行提交参数设置，并提交任务**![image-20230301190903746](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301190903746.png)
+-   **访问Web UI地址，并点击左侧导航栏：`Submit New Job`**![image-20230301190302963](./03-Flink.assets/image-20230301190302963.png)
+-   **点击右上角`Add New`上传Flink任务对应的jar包**![image-20230301190400272](./03-Flink.assets/image-20230301190400272.png)![image-20230301190530311](./03-Flink.assets/image-20230301190530311.png)
+-   **点击提交的jar包，进行提交参数设置，并提交任务**![image-20230301190903746](./03-Flink.assets/image-20230301190903746.png)
 
 -   **任务提交完成后，可以通过左侧导航栏的JobManager和TaskManager对任务进行监控和撤销**
 
@@ -655,7 +655,7 @@ Flink是一个需要有效分配和管理计算资源，用以进行流数据处
 
 Flink运行时架构主要包含两个主要的组件：JobManager和TaskManager。
 
-![image-20230301205516248](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230301205516248.png)
+![image-20230301205516248](./03-Flink.assets/image-20230301205516248.png)
 
 
 
@@ -699,7 +699,7 @@ TaskManager又被称为workers，用于进行数据流的具体计算任务，�
 
 Job总体提交流程
 
-![image-20230302110430344](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302110430344.png)
+![image-20230302110430344](./03-Flink.assets/image-20230302110430344.png)
 
 -   **由Client通过Discatcher提供的REST接口，将Job提交给JobManager**
 -   **随后Discatcher启动JobMaster，将jar包和解析好的DataFlowGraph和JobGraph提交给JobMaster**
@@ -750,7 +750,7 @@ Operator的subTask的个数称为该Operator的并行度。
     -   **命令行提交，使用-p参数，设置并行度**
 -   **`flink-conf.yaml`配置文件中配置默认并行度：配置`parallelism.default`配置项**
 
-![image-20230302140600577](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302140600577.png)
+![image-20230302140600577](./03-Flink.assets/image-20230302140600577.png)
 
 ### 3.3.2、Operator Chain（算子链）
 
@@ -762,11 +762,11 @@ Operator的subTask的个数称为该Operator的并行度。
 
 如果上游Operator的数据向下游Operator发送需要进行Shuffle时，那么就无法进行Operator合并。
 
-![image-20230302140621237](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302140621237.png)
+![image-20230302140621237](./03-Flink.assets/image-20230302140621237.png)
 
 ### 3.3.3、DataFlowGraph、Job Graph、Execution Graph和Physical Graph
 
-![image-20230302141920007](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302141920007.png)
+![image-20230302141920007](./03-Flink.assets/image-20230302141920007.png)
 
 -   **DataFlow Graph**
 
@@ -823,7 +823,7 @@ DataStream在用法上有些类似于Java集合，但又有所不同。Flink App
 
 其中，获取环境和执行流/批数据处理，都可以认为是针对执行环境的操作，所以在编写Flink Application的过程中，主要关注Execution Environment、Source、Transform、Sink。
 
-![image-20230302165350717](C:\Users\28645\AppData\Roaming\Typora\typora-user-images\image-20230302165350717.png)
+![image-20230302165350717](./03-Flink.assets/image-20230302165350717.png)
 
 ## 0、引入Flink项目的依赖
 
@@ -1440,6 +1440,8 @@ public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction
 
 从数据源读取到数据之后，就可以调用各种Transformation Operator，将DataStream转换成新的DataStream，进行实现业务的处理逻辑。
 
+**==正如上述所说，Flink是一个分部式大数据处理框架，对数据的数据类型非常关注。在Flink程序中，几乎每一处都涉及到泛型的使用，常用于标注输入数据、输出数据、中间状态等数据的数据类型，因此，请在编写Flink程序时，留意泛型的含义，特别是算子中传入的接口的泛型，因为这些接口的实现类对象就是数据处理的逻辑，其中的泛型决定了输入输出数据的数据类型。==**
+
 ### 4.3.1 基本转换算子
 
 #### 4.3.1.1 映射—map
@@ -1451,9 +1453,7 @@ public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction
 ```java
 public <R> SingleOutputStreamOperator<R> map(MapFunction<T, R> mapper) {
 
-     TypeInformation<R> outType =
-            TypeExtractor.getMapReturnTypes(
-                    clean(mapper), getType(), Utils.getCallLocationName(), true);
+    TypeInformation<R> outType = TypeExtractor.getMapReturnTypes(clean(mapper), getType(), Utils.getCallLocationName(), true);
 
     return map(mapper, outType);
 }
@@ -1462,6 +1462,8 @@ public <R> SingleOutputStreamOperator<R> map(MapFunction<T, R> mapper) {
 `map()`方法需要传入一个`MapFunction`类型的参数，这个参数定义了数据”映射“的规则。
 
 **`MapFunction`接口的定义：**
+
+**==通过`map()`方法的设置可以看出，`map()`方法的输入数据和输出数据的泛型不同，表明输入数据和输出数据的类型可以不同==**
 
 ```Java
 // <T> 输入数据流的数据类型
@@ -1542,4 +1544,416 @@ public class C006_MapTransformation {
 >
 >**推荐使用第二种匿名实现类，原因是，数据处理逻辑（此处是映射逻辑）一般只会使用一次，因此无需使用自定义实现类，如果多次使用同一种数据处理逻辑，那么可以将数据处理逻辑封装成一个类，即采用第一种方式自定义实现类。**
 >
->**对于lambda表达式，不推荐使用，原因有二，一、对于输入数据或输出数据是简单数据类型，即没有使用嵌套泛型或者POJO类附加泛型等复杂情况，lambda表达式确实使用简单，但是当输入数据或输出数据使用了复杂数据类型时，会出现泛型擦除的情况，此时需要对数据类型做额外的说明，否则程序会报错。二、lambda表达式体现的是函数式编程思想，Java是面向对象编程思想，笔者希望程序能够从始至终都使用一种编程思想。所以不推荐使用lambda表达式，后续的演示示例也将会采用匿名实现类的方式。**
+>**对于lambda表达式，不推荐使用，原因有二，一、对于输入数据或输出数据是简单数据类型，即没有使用嵌套泛型或者POJO类附加泛型等复杂情况，lambda表达式确实使用简单，但是当输入数据或输出数据使用了复杂数据类型时，会出现泛型擦除的情况，此时需要对数据类型通过调用`returns()`方法做补充的说明，否则程序会报错。二、lambda表达式体现的是函数式编程思想，Java是面向对象编程思想，笔者希望程序能够从始至终都使用一种编程思想。所以不推荐使用lambda表达式，后续的演示示例也将会采用匿名实现类的方式。**
+
+#### 4.3.1.2 过滤—filter
+
+`filter`，用于将符合条件的数据过滤出来。算子中，通过设置一个布尔条件表达式，对每一个元素进行判断，判断结果为true，那么就将元素正常发往下游，如果为false，那么就将被过滤掉。
+
+**`filter()`方法的定义：**
+
+**==从`filter()`方法的定义中，可以看到，输入数据与输出数据的泛型定义相同，表明`filter`算子只能对数据进行过滤，不能改变数据的类型。当然，也并不建议在`filter`算子中进行逻辑处理，这并不是设计`filter`算子的目的。==**
+
+```Java
+public SingleOutputStreamOperator<T> filter(FilterFunction<T> filter) {
+    return transform("Filter", getType(), new StreamFilter<>(clean(filter)));
+}
+```
+
+**`FilterFunction`接口的定义：**
+
+```Java
+public interface FilterFunction<T> extends Function, Serializable {
+
+    boolean filter(T value) throws Exception;
+}
+```
+
+**演示需求：过滤出Bob用户的访问数据。**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-09 10:37
+ * @desc filter算子。需求，过滤出Bob用户的访问数据
+ */
+public class C007_FilterTransformation {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、创建数据源，直接枚举数据
+        DataStreamSource<WebPageAccessEvent> sampleDS = env.fromElements(
+                new WebPageAccessEvent("Anna", "./start", "1000"),
+                new WebPageAccessEvent("Bob", "./market", "2000"),
+                new WebPageAccessEvent("Carter", "./advertising", "3000")
+        );
+
+        // TODO 3、调用filter()方法，过滤出Bob用户的访问数据
+        SingleOutputStreamOperator<WebPageAccessEvent> filterDB = sampleDS.filter(
+                new FilterFunction<WebPageAccessEvent>() {
+                    @Override
+                    public boolean filter(WebPageAccessEvent value) throws Exception {
+                        return "Bob".equals(value.userName);
+                    }
+                }
+        );
+
+        // TODO 4、在控制台打印流数据
+        filterDB.print();
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+#### 4.3.1.3 扁平映射—flatMap
+
+`flatMap`，用于将每一个数据拆分成0个或多个数据，随后对这些数据进行转换处理。不同于`map`和`filter`，由于提前不确定会将数据拆分成多少个元素，因此，`flatMap`并不是默认地将数据自动发往下游，而是通过一个收集器`Collector`，由用户在需要发送数据的时候调用其`collect()`方法，`collect()`方法可以被调用一次或者多次。
+
+**`flatMap()`方法的定义：**
+
+**==通过泛型设置可以看出，`flatMap()`方法的输入数据和输出数据的泛型不同，表明输入数据和输出数据的类型可以不同==**
+
+```java
+public <R> SingleOutputStreamOperator<R> flatMap(FlatMapFunction<T, R> flatMapper) {
+
+    TypeInformation<R> outType =
+            TypeExtractor.getFlatMapReturnTypes(
+                    clean(flatMapper), getType(), Utils.getCallLocationName(), true);
+
+    return flatMap(flatMapper, outType);
+}
+```
+
+**`FlatMapFunction`接口的定义：**
+
+```Java
+public interface FlatMapFunction<T, O> extends Function, Serializable {
+
+    void flatMap(T value, Collector<O> out) throws Exception;
+}
+```
+
+**需求演示：过滤掉Bob用户的数据，Anna用户的数据不做任何处理，直接发送下游，Carter用户的数据，删除其操作时间**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-09 11:00
+ * @desc flatMap算子。需求，过滤掉Bob用户的数据，Anna用户的数据不做任何处理，直接发送下游，Carter用户的数据，删除其操作时间
+ */
+public class C008_FlatMapTransformation {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、创建数据源，直接枚举数据
+        DataStreamSource<WebPageAccessEvent> sampleDS = env.fromElements(
+                new WebPageAccessEvent("Anna", "./start", "1000"),
+                new WebPageAccessEvent("Bob", "./market", "2000"),
+                new WebPageAccessEvent("Carter", "./advertising", "3000")
+        );
+
+        // TODO 3、调用flatMap()方法，过滤掉Bob用户的数据，Anna用户的数据不做任何处理，直接发送下游，Carter用户的数据，删除其操作时间
+        SingleOutputStreamOperator<String> flatMapDB = sampleDS.flatMap(
+                new FlatMapFunction<WebPageAccessEvent, String>() {
+                    @Override
+                    public void flatMap(WebPageAccessEvent value, Collector<String> out) throws Exception {
+                        if ("Anna".equals(value.userName)) {
+                            out.collect(value.toString());
+                        } else if ("Carter".equals(value.userName)) {
+                            out.collect(value.userName + ": " + value.url);
+                        }
+                    }
+                }
+        );
+
+        // TODO 4、在控制台打印流数据
+        flatMapDB.print();
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+### 4.3.2 聚合算子
+
+#### 4.3.2.0 数据分区—keyBy
+
+分组聚合，先分组，后聚合。不论是在Flink中，还是在Spark、Hadoop中，所有的聚合操作，都必须先对数据进行分组，因为，聚合只需要将符合条件的某一类数据进行聚合。对数据进行分组，能够有效提高聚合效率。
+
+在Flink中，使用`keyBy()`方法对数据流进行分组，通过指定分组“键”，可以将一个数据流在逻辑层面划分成不同的分区，在物理层面，就是将具有不同“键”的数据分配到不同的Task Slot中，交由不同的并行子任务处理。
+
+Flink在获取到用户指定的分组“键”后，将计算分组”键“的hash code，并对分区数取模，来确定数据将被发送到哪个分区中。所以，如果指定的key是POJO的话，必须要重写其`hashCode()`方法。
+
+对于`keyBy()`方法所需要的分组”键“，有很多不同的方法来指定key，例如，对于Tuple类型的数据，可以通过指定位置或者多个位置的组合来指定分组”键“；对于POJO类型，只能指定名称来指定分组”键“；也可以使用lambda表达式或者实现一个`KeySelector`接口，用于指定分组”键“。
+
+**==文档将统一通过实现`KeySelector`接口的方式来指定分组”键“。==**
+
+**`keyBy()`方法的定义：**
+
+**==`KeyedStream`类虽然也是继承自`DataStream`，但`keyBy()`方法不是算子。==**
+
+```Java
+// <T> 输入数据的类型
+// <K> 输出数据的类型
+public <K> KeyedStream<T, K> keyBy(KeySelector<T, K> key) {
+    Preconditions.checkNotNull(key);
+    return new KeyedStream<>(this, clean(key));
+}
+```
+
+#### 4.3.2.1 简单聚合
+
+Flink基于`KeyedStream`数据流，内置了一些较为基本的聚合算子，这些算子在使用时，不需要像基本转换算子那样，实现自定义接口类对象，只需要指定聚合字段就可以了，指定聚合字段的方式有两种，一是指定位置，二是指定名称。对于Tuple类型的数据，两种方式均可以使用，在Tuple类型数据中，位置索引从0开始，字段的名称是f0, f1, f2, ...；对于POJO类型，只能通过字段名称进行指定，不能通过位置来指定，其中字段名称就是POJO的属性名称。
+
+-   `sum()`：基于输入流，对指定字段做叠加求和操作
+-   `min()`/`minBy()`：基于输入流，对指定字段求最小值
+-   `max()`/`maxBy()`：基于输入流，对指定字段求最大值
+
+**`min()`与`minBy()`、`max()`与`maxBy()`，都只能对Tuple类型的数据生效。它们的区别在于返回求值结果时的区别，将在下面用举例说明。**
+
+**简单聚合`max()`示例**
+
+```java
+/**
+ * @author shaco
+ * @create 2023-03-09 11:39
+ * @desc 简单聚合函数
+ */
+public class C009_SimpleAggregationTransformation {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、创建数据源，直接枚举数据
+        DataStreamSource<Tuple3<String, Integer, Integer>> aggregationDS = env.fromElements(
+                Tuple3.of("a", 1, 10000),
+                Tuple3.of("a", 4, 400),
+            	Tuple3.of("a", 4, 500),
+                Tuple3.of("a", 3, 300)
+        );
+
+        // TODO 3、按用户名称进行分组
+        KeyedStream<Tuple3<String, Integer, Integer>, String> keyedDS = aggregationDS.keyBy(
+                new KeySelector<Tuple3<String, Integer, Integer>, String>() {
+                    @Override
+                    public String getKey(Tuple3<String, Integer, Integer> value) throws Exception {
+                        return value.f0;
+                    }
+                }
+        );
+
+        // TODO 5、聚合，并在控制台打印
+        keyedDS.max("f1").print("~~~~");
+        keyedDS.maxBy("f1").print("====");
+
+        // TODO 6、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**运行代码，得到结果为**
+
+```txt
+====> (a,1,10000)
+====> (a,4,400)
+====> (a,4,400)
+====> (a,4,400)
+~~~~> (a,1,10000)
+~~~~> (a,4,10000)
+~~~~> (a,4,10000)
+~~~~> (a,4,10000)
+```
+
+从输出结果可以看到，`max()`方法返回的结果是，`max()`方法指定的那个字段中的最大值，如果是无界流，那么则是截止目前位置的最大值，其他字段的取值取Flink读取到的第一条数据的对应字段的取值。
+
+**`maxBy()`方法返回的结果就接近一般的理解，即`maxBy()`方法是返回指定列最大的那个值关联的一整条记录，而不仅仅是那一列的那一个元素。**
+
+#### 4.3.2.2 归约聚合
+
+归约聚合是相较于简单聚合更为一般的聚合逻辑，简单聚合是基于已有的数据进行的数据聚合，而归约聚合在已有数据的基础上还添加了一个用于集合的初始值，在聚合过程中，初始值和第一个数据进行聚合，得到的结果再与第二个数据进行聚合，依此类推。因此在聚合过程中，需要使用一个中间状态，保存聚合的中间值，此处的中间值的使用，在Flink中就叫做状态编程，中间值还有一个称呼，叫做累加器（Accumulator）。
+
+**`reduce()`方法的定义：**
+
+**==通过泛型的设置，可以看出，`reduce()`方法的输入数据和输出数据的数据类型必须相同。==**
+
+```Java
+public SingleOutputStreamOperator<T> reduce(ReduceFunction<T> reducer) {
+    ReduceTransformation<T, KEY> reduce =
+            new ReduceTransformation<>(
+                    "Keyed Reduce",
+                    environment.getParallelism(),
+                    transformation,
+                    clean(reducer),
+                    keySelector,
+                    getKeyType());
+
+    getExecutionEnvironment().addOperator(reduce);
+
+    return new SingleOutputStreamOperator<>(getExecutionEnvironment(), reduce);
+}
+```
+
+**`ReduceFunction`接口的定义：**
+
+```Java
+public interface ReduceFunction<T> extends Function, Serializable {
+
+    T reduce(T value1, T value2) throws Exception;
+}
+```
+
+**演示示例：使用reduce实现maxBy()，求当前访问量最大的用户。**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-09 16:46
+ * @desc 归约聚合reduce，需求：使用reduce实现maxBy()，求当前访问量最大的用户
+ */
+public class C010_ReduceTransformation {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、创建数据源，使用流式数据
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+
+        // TODO 3、数据处理逻辑
+        // 为提高数据传输效率，过滤掉无效的字段
+        SingleOutputStreamOperator<Tuple2<String, Long>> mapDS = webPageAccessEventDS.map(
+                new MapFunction<WebPageAccessEvent, Tuple2<String, Long>>() {
+                    @Override
+                    public Tuple2<String, Long> map(WebPageAccessEvent value) throws Exception {
+                        return Tuple2.of(value.userName, 1L);
+                    }
+                }
+        );
+
+        // 统计出每个用户的访问量，先分组，然后计算每个用户的访问量
+        SingleOutputStreamOperator<Tuple2<String, Long>> accessAmountDS = mapDS.keyBy(
+                new KeySelector<Tuple2<String, Long>, String>() {
+                    @Override
+                    public String getKey(Tuple2<String, Long> value) throws Exception {
+                        return value.f0;
+                    }
+                }
+        ).reduce(
+                new ReduceFunction<Tuple2<String, Long>>() {
+                    @Override
+                    public Tuple2<String, Long> reduce(Tuple2<String, Long> value1, Tuple2<String, Long> value2) throws Exception {
+                        return Tuple2.of(value1.f0, value1.f1 + value2.f1);
+                    }
+                }
+        );
+
+        // 再将各个用户的统计数据放到一起进行比较，求出访问量最大的用户
+        SingleOutputStreamOperator<Tuple2<String, Long>> maxAccessAmountDS = accessAmountDS.keyBy(new KeySelector<Tuple2<String, Long>, String>() {
+            @Override
+            public String getKey(Tuple2<String, Long> value) throws Exception {
+                // 这里指定常量，目的是将所有用户的数据分到同一个组中
+                return "userGroup";
+            }
+        }).reduce(
+                new ReduceFunction<Tuple2<String, Long>>() {
+                    @Override
+                    public Tuple2<String, Long> reduce(Tuple2<String, Long> value1, Tuple2<String, Long> value2) throws Exception {
+                        return value1.f1 > value2.f1 ? value1 : value2;
+                    }
+                }
+        );
+
+        // TODO 4、控制台打印
+        maxAccessAmountDS.print();
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+## 4.4 富函数（Rich Function）
+
+通过上述的演示示例，可以很清楚地看到Flink的程序结构：创建执行环境、获取数据源、数据处理操作、输出数据，最后执行流数据处理操作。
+
+也能够看到Flink地编码风格，都是基于DataStream调用一个方法，用来表示将要执行的数据处理操作。方法中需要传入一个参数，这个参数都需要实现一个接口，并重写其唯一的抽象方法，方法的逻辑即数据处理的逻辑。
+
+进一步地，可以看到所有的接口名都是`xxxFunction`的形式，并且这些接口全都继承自`Function`接口，`Function`接口中并没有定义抽象方法，只是一个标识接口。
+
+**`Function`接口的继承树，展示了`Function`接口最为常见的子接口**
+
+<img src="./03-Flink.assets/Function.png" alt="Function"  />
+
+在继承树中，可以看到已经使用过的`SourceFunction`，`KeySelector`，`MapFunction`，`FilterFunction`等等，还有即将介绍的`RichFunction`。
+
+在Flink中，所有的算子都有其富函数版本，并且富函数类一般都是以抽象类的形式存在。
+
+**`RichFunction`接口的继承树**
+
+![RichFunction](./03-Flink.assets/RichFunction.png)
+
+相对于一般的算子，富函数版本算子提供了更多的更强大的两项功能，一是，提供了算子生命周期相关的方法；二是可以获取运行环境的上下文。
+
+**`RichFunction`接口的定义：**
+
+```Java
+public interface RichFunction extends Function {
+
+    /* @param parameters The configuration containing the parameters attached to the contract.
+     * @throws Exception Implementations may forward exceptions, which are caught by the runtime.
+     *     When the runtime catches an exception, it aborts the task and lets the fail-over logic
+     *     decide whether to retry the task execution.
+     * @see org.apache.flink.configuration.Configuration
+     */
+    void open(Configuration parameters) throws Exception;
+
+    void close() throws Exception;
+
+    // ------------------------------------------------------------------------
+    //  Runtime context
+    // ------------------------------------------------------------------------
+
+    /**
+     * Gets the context that contains information about the UDF's runtime, such as the parallelism
+     * of the function, the subtask index of the function, or the name of the task that executes the
+     * function.
+     *
+     * <p>The RuntimeContext also gives access to the {@link
+     * org.apache.flink.api.common.accumulators.Accumulator}s and the {@link
+     * org.apache.flink.api.common.cache.DistributedCache}.
+     *
+     * @return The UDF's runtime context.
+     */
+    RuntimeContext getRuntimeContext();
+
+    /**
+     * Gets a specialized version of the {@link RuntimeContext}, which has additional information
+     * about the iteration in which the function is executed. This IterationRuntimeContext is only
+     * available if the function is part of an iteration. Otherwise, this method throws an
+     * exception.
+     *
+     * @return The IterationRuntimeContext.
+     * @throws java.lang.IllegalStateException Thrown, if the function is not executed as part of an
+     *     iteration.
+     */
+    IterationRuntimeContext getIterationRuntimeContext();
+
+    /**
+     * Sets the function's runtime context. Called by the framework when creating a parallel
+     * instance of the function.
+     *
+     * @param t The runtime context.
+     */
+    void setRuntimeContext(RuntimeContext t);
+}
+```
+
