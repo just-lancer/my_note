@@ -1171,6 +1171,64 @@ public class C003_ReadSocketTextSource {
 
 ### 4.2.4 读取Kafka
 
+Flink框架并没有为Kafka数据源提供内嵌的实现方法，因此只能通过调用`addSource()`方法、实现`SourceFunction`接口。虽然Flink没有提供内嵌方法，但Flink提供了一个连接工具`flink-connertor-kafka`，直接实现了一个消费者`FlinkKakfaConsumer`，用于读取Kafka的数据。
+
+读取Kafka的数据需要开启Kafka服务，这里以Kafka集群为例。
+
+-   **启动Zookeeper集群：`zk_mine.sh start`**
+
+-   **启动Kafka集群：`kf_mine.sh start`**
+
+-   **创建测试用Kafka主题`first`，分区数1，副本数1：`kafka-topics.sh --bootstrap-server hadoop132:9092 --create --topic first --partitions 1 --replication-factor 1`**
+
+-   **开启Kafka生产者客户端：`kafka-console-producer.sh --bootstrap-server hadoop132:9092 --topic first`**
+
+-   **编写读取Kafka数据的Flink代码，并运行：**
+
+    ```Java
+    /**
+     * @author shaco
+     * @create 2023-03-06 11:51
+     * @desc 读取Kafka数据源
+     */
+    public class C004_ReadKafkaSource {
+        public static void main(String[] args) throws Exception {
+            // TODO 1、创建流执行环境
+            StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+            env.setParallelism(1);
+    
+            // TODO 2、配置Kafka消费者属性，以及创建FlinkKafkaConsumer对象
+            // Kafka消费主题
+            String topic = "first";
+    
+            // Kafka连接属性
+            Properties kafkaProperties = new Properties();
+            kafkaProperties.put("bootstrap.servers", "hadoop132:9092,hadoop133:9092"); // 集群连接地址
+            kafkaProperties.put("group.id", "test"); // 设置消费者组
+            kafkaProperties.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");  //  key的反序列化
+            kafkaProperties.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");  // value的反序列化
+            kafkaProperties.put("auto.offset.reset", "latest"); // 消费偏移量，最新处开始
+    
+            FlinkKafkaConsumer<String> stringFlinkKafkaConsumer = new FlinkKafkaConsumer<String>(
+                    topic,
+                    new SimpleStringSchema()
+                    , kafkaProperties
+            );
+    
+            // TODO 3、读取Kafka数据源
+            DataStreamSource<String> stringKafkaDS = env.addSource(stringFlinkKafkaConsumer);
+    
+            // TODO 4、打印数据流到控制台
+            stringKafkaDS.print();
+    
+            // TODO 5、执行流数据处理
+            env.execute();
+        }
+    }
+    ```
+
+-   **在Kafka生产者端随意发送消息，查看IDEA控制台打印结果**
+
 ### 4.2.5 自定义Source
 
 在测试时，如果以上现有Source的实现还不能满足需求，那么可以自定义Source，并通过流执行环境调用`addSource()`方法，读取自定义数据源。
@@ -1244,7 +1302,7 @@ public class WebPageAccessEventSource implements SourceFunction<WebPageAccessEve
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss");
 
         while (isRunning && count <= 100) {
-            user = users[random.nextInt(users.length - 1)];
+            user = users[random.nextInt(users.length)];
             url = urls[random.nextInt(urls.length)];
             LocalDateTime now = LocalDateTime.now();
             String dateTime = dateTimeFormatter.format(now);
@@ -1318,7 +1376,7 @@ public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction
         DateTimeFormatter dateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd hh:mm:ss");
 
         while (isRunning && count <= 100) {
-            user = users[random.nextInt(users.length - 1)];
+            user = users[random.nextInt(users.length)];
             url = urls[random.nextInt(urls.length)];
             LocalDateTime now = LocalDateTime.now();
             String dateTime = dateTimeFormatter.format(now);
@@ -1340,3 +1398,148 @@ public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction
 }
 ```
 
+>**==Flink的数据类型系统==**
+>
+>Flink是一个分布式流式数据处理框架，其在处理数据时，必不可少的需要对数据进行网络传输和溢写磁盘，那么Flink就需要对数据进行序列化和反序列化，因此Flink必须要知道所处理的数据的数据类型是什么。
+>
+>Flink有自己一整套类型系统。Flink使用`TypeInformation`来统一表示数据类型。`TypeInformation`类是Flink中所有类型描述符的基类。它涵盖了类型的一些基本属性，并为每个数据类型生成特定的序列化器、反序列化器和比较器。
+>
+>Flink支持的数据类型：
+>
+>-   基本类型：所有 Java 基本类型及其包装类，再加上`Void`、 `String`、 `Date`、 `BigDecimal`和`BigInteger`
+>-   数组类型：包括基本类型数组（PRIMITIVE_ARRAY）和对象数组(OBJECT_ARRAY)  
+>-   复杂数据类型：
+>    -   Java 元组类型（TUPLE）：这是Flink内置的元组类型，是Java API的一部分。最多25个字段，也就是从`Tuple0`~`Tuple25`，不支持空字段
+>    -   Scala 样例类及Scala元组：不支持空字段
+>    -   行类型（ROW）：可以认为是具有任意个字段的元组,并支持空字段
+>    -   POJO： Flink自定义的类似于Java bean模式的类
+>-   辅助类型：`Option`、 `Either`、 `List`、 `Map` 等
+>-   泛型类型（GENERIC）
+>
+>POJO类型的定义：
+>
+>-   类是`public`和独立的，即也没有非静态的内部类
+>-   拥有`public`的无参构造器
+>-   类中的所有字段是`public`且非`final`的；或者有一个公共的getter和setter方法，这些方法需要符合Java bean的命名规范
+>
+>Flink支持任意Java和Scala类作为其数据类型。但是如果这些类没有按照POJO的格式进行定义，就会被Flink当作泛型来处理，此时，Flink只能获取泛型的外部数据类型，对类内部属性的数据类型无法获取，进而导致泛型擦除，并且这些内部属性的数据类型将不会由Flink进行序列化，而是由Kryo进行序列化。
+>
+>因此，对数据类型的使用，建议如下：
+>
+>-   简单数据类型，按需使用相应的包装类以及`Void`、 `String`、 `Date`、 `BigDecimal`和`BigInteger`
+>
+>-   复杂数据类型，一律申明成POJO类。
+>
+>-   Tuple类型较为特殊，简单的元组类型，其泛型正常申明即可。对于嵌套元组，需要使用Flink提供的`TypeHint`类。`TypeHint`类能够捕获泛型的类型信息，并一直记录下来，为运行时提供足够的信息。在使用时，通过调用`returns()`方法，明确指定DataStream中元素的数据类型。
+>
+>    ```java
+>    .returns(new TypeHint<Tuple2<Integer, SomeType>>(){})
+>    ```
+
+## 4.3 Transformation Operator 
+
+从数据源读取到数据之后，就可以调用各种Transformation Operator，将DataStream转换成新的DataStream，进行实现业务的处理逻辑。
+
+### 4.3.1 基本转换算子
+
+#### 4.3.1.1 映射—map
+
+`map`，用于将数据流中的数据一一映射成新的数据，即，消费一个数据，就产出一个新的数据，不会多，也不会少。
+
+**`map()`方法的定义：**
+
+```java
+public <R> SingleOutputStreamOperator<R> map(MapFunction<T, R> mapper) {
+
+     TypeInformation<R> outType =
+            TypeExtractor.getMapReturnTypes(
+                    clean(mapper), getType(), Utils.getCallLocationName(), true);
+
+    return map(mapper, outType);
+}
+```
+
+`map()`方法需要传入一个`MapFunction`类型的参数，这个参数定义了数据”映射“的规则。
+
+**`MapFunction`接口的定义：**
+
+```Java
+// <T> 输入数据流的数据类型
+// <O> 输出数据流的数据类型
+public interface MapFunction<T, O> extends Function, Serializable {
+
+    O map(T value) throws Exception;
+}
+```
+
+**演示需求：获取每个访问事件WebPageAccessEvent的url**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-06 14:57
+ * @desc map转换算子。需求：获取每个访问事件的url
+ */
+public class C006_MapTransformation {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、创建数据源，简单起见，直接枚举数据
+        DataStreamSource<WebPageAccessEvent> sampleDS = env.fromElements(
+                new WebPageAccessEvent("Anna", "./start", "1000"),
+                new WebPageAccessEvent("Bob", "./market", "2000"),
+                new WebPageAccessEvent("Carter", "./advertising", "3000")
+        );
+
+        // TODO 3、调用map()方法，将WebPageAccessEvent类型的访问事件数据转换成String类型的url
+        // 方式一：自定义实现类
+        SingleOutputStreamOperator<String> mapDS1 = sampleDS.map(new MyMapFunction());
+
+        // 方式二：传入匿名实现类
+        SingleOutputStreamOperator<String> mapDS2 = sampleDS.map(
+                new MapFunction<WebPageAccessEvent, String>() {
+                    @Override
+                    public String map(WebPageAccessEvent value) throws Exception {
+                        return value.url;
+                    }
+                }
+        );
+
+        // 方式三：使用lambda表达式
+        SingleOutputStreamOperator<String> mapDS3 = sampleDS.map(accessEvent -> accessEvent.url);
+
+        // TODO 4、打印输出结果到控制台
+        mapDS1.print("===");
+        mapDS2.print(">>>");
+        mapDS3.print("^^^");
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+
+    static class MyMapFunction implements MapFunction<WebPageAccessEvent, String> {
+        @Override
+        public String map(WebPageAccessEvent value) throws Exception {
+            return value.url;
+        }
+    }
+}
+```
+
+>**==说明一：Flink Transformation Operator对数据处理的基本思想==**
+>
+>**Flink是一个分布式流式数据处理框架，其数据处理过程的开启来自于事件触发，即Flink服务一直开启，来一条数据就会触发一次计算。正如前面所述，”铁打的算子，流水的数据“，Flink代码结构，由一系列算子构成，每一条数据到达一个算子时，算子就会执行一次，该数据就要被当前算子处理并加工一次，当前算子会将加工好的数据，再次发送到数据流中，然后由下游算子进行处理。在经过了所有的算子处理之后，得到的最终的形态，就是业务处理需求的最终结果。**
+>
+>**==说明二：`map`算子对数据处理的过程==**
+>
+>**`map`算子对数据进行”一一映射“的处理，在处理过程中，数据数量不会发生变化。数据映射的逻辑，需要在实现`MapFunction`接口，重写其`map()`方法时，进行定义。**
+>
+>**==说明三：实现`MapFunction`接口的方式选择：推荐使用匿名实现类的方式==**
+>
+>**如演示需求所示，实现`MapFunction`接口，定义数据映射的方式有三种，一、自定义实现类；二、匿名实现类；三、使用lambda表达式。**
+>
+>**推荐使用第二种匿名实现类，原因是，数据处理逻辑（此处是映射逻辑）一般只会使用一次，因此无需使用自定义实现类，如果多次使用同一种数据处理逻辑，那么可以将数据处理逻辑封装成一个类，即采用第一种方式自定义实现类。**
+>
+>**对于lambda表达式，不推荐使用，原因有二，一、对于输入数据或输出数据是简单数据类型，即没有使用嵌套泛型或者POJO类附加泛型等复杂情况，lambda表达式确实使用简单，但是当输入数据或输出数据使用了复杂数据类型时，会出现泛型擦除的情况，此时需要对数据类型做额外的说明，否则程序会报错。二、lambda表达式体现的是函数式编程思想，Java是面向对象编程思想，笔者希望程序能够从始至终都使用一种编程思想。所以不推荐使用lambda表达式，后续的演示示例也将会采用匿名实现类的方式。**
