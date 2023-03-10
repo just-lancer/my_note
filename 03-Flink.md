@@ -825,7 +825,7 @@ DataStream在用法上有些类似于Java集合，但又有所不同。Flink App
 
 ![image-20230302165350717](./03-Flink.assets/image-20230302165350717.png)
 
-## 0、引入Flink项目的依赖
+## 4.0、引入Flink项目的依赖
 
 为了能在IDEA开发环境中编写并运行Flink代码，需要在module的pom.xml中引入Flink项目的相关依赖，包含，flink-java、flink-streaming-java，以及flink-clients（Flink客户端，可以省略）。另外为了便于查看运行日志，还引入slf4j和log4j进行日志管理。
 
@@ -1436,7 +1436,7 @@ public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction
 >    .returns(new TypeHint<Tuple2<Integer, SomeType>>(){})
 >    ```
 
-## 4.3 Transformation Operator 
+## 4.3、Transformation Operator 
 
 从数据源读取到数据之后，就可以调用各种Transformation Operator，将DataStream转换成新的DataStream，进行实现业务的处理逻辑。
 
@@ -1881,39 +1881,33 @@ public class C010_ReduceTransformation {
 }
 ```
 
-## 4.4 富函数（Rich Function）
+## 4.4、富函数（Rich Function）
 
 通过上述的演示示例，可以很清楚地看到Flink的程序结构：创建执行环境、获取数据源、数据处理操作、输出数据，最后执行流数据处理操作。
 
-也能够看到Flink地编码风格，都是基于DataStream调用一个方法，用来表示将要执行的数据处理操作。方法中需要传入一个参数，这个参数都需要实现一个接口，并重写其唯一的抽象方法，方法的逻辑即数据处理的逻辑。
+也能够看到Flink地编码风格，都是基于DataStream调用一个方法，用来表示将要执行的数据处理操作。方法中需要传入一个参数，这个参数都需要实现一个接口，并重写其唯一的抽象方法，方法的逻辑即数据处理的逻辑。**为便于叙述，以下称这类接口为函数式接口，其的实现类成为函数类。**
 
 进一步地，可以看到所有的接口名都是`xxxFunction`的形式，并且这些接口全都继承自`Function`接口，`Function`接口中并没有定义抽象方法，只是一个标识接口。
 
-**`Function`接口的继承树，展示了`Function`接口最为常见的子接口**
+**`Function`接口的继承树，展示了`Function`接口的部分子接口**
 
 <img src="./03-Flink.assets/Function.png" alt="Function"  />
 
 在继承树中，可以看到已经使用过的`SourceFunction`，`KeySelector`，`MapFunction`，`FilterFunction`等等，还有即将介绍的`RichFunction`。
 
-在Flink中，所有的算子都有其富函数版本，并且富函数类一般都是以抽象类的形式存在。
+在Flink中，所有的函数式接口都有其富函数版本，并且富函数类一般都是以抽象类的形式存在。
 
 **`RichFunction`接口的继承树**
 
-![RichFunction](./03-Flink.assets/RichFunction.png)
+![RichFunctionDemo](./03-Flink.assets/RichFunctionDemo.png)
 
-相对于一般的算子，富函数版本算子提供了更多的更强大的两项功能，一是，提供了算子生命周期相关的方法；二是可以获取运行环境的上下文。
+相对于一般的算子，富函数版本算子提供了两项极为强大的功能，一是，提供了算子生命周期相关的方法；二是提供了可以获取运行环境的上下文的方法。
 
 **`RichFunction`接口的定义：**
 
 ```Java
 public interface RichFunction extends Function {
 
-    /* @param parameters The configuration containing the parameters attached to the contract.
-     * @throws Exception Implementations may forward exceptions, which are caught by the runtime.
-     *     When the runtime catches an exception, it aborts the task and lets the fail-over logic
-     *     decide whether to retry the task execution.
-     * @see org.apache.flink.configuration.Configuration
-     */
     void open(Configuration parameters) throws Exception;
 
     void close() throws Exception;
@@ -1956,4 +1950,193 @@ public interface RichFunction extends Function {
     void setRuntimeContext(RuntimeContext t);
 }
 ```
+
+**方法介绍：**
+
+-   **生命周期，指的是函数式接口的实现类对象的生命周期，从对象创建开始，到对象回收结束。每一个并行子任务都有自己的生命周期**
+    -   **`open()`方法，方法定义的逻辑会随着生命周期的开始而被执行。因此，类似于文件IO，数据库连接，配置文件读取等只需要进行一次的操作适合定义在`open()`方法中**
+    -   **`close()`方法，方法定义的逻辑会随着生命周期的结束而被执行，因此，类似于关闭数据库连接，释放资源的操作适合定义在`close()`方法中**
+-   **运行时环境，指算子的并行子任务在运行时所处的环境，通过运行时环境的上下文对象，能够获取并行子任务相关的元数据信息，例如，并行子任务的名称、并行度、以及索引号。**
+    -   **`getRuntimeContext()`方法，用于获取运行时上下文对象**
+    -   **`getIterationRuntimeContext()`，用于获取运行时上下问对象，相较于`getRuntimeContext()`方法，`getIterationRuntimeContext()`方法获得的上下文对象能够获取更多的信息，例如累加器的值**
+    -   **`setRuntimeContext(RuntimeContext t)`，用于设置运行时对象，一般不使用**
+
+**演示示例：**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-10 14:43
+ * @desc 富函数演示，使用RichMapFunction进行演示
+ */
+public class C011_RichMapFunction {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(2);
+
+        // TODO 2、创建数据源，使用流式数据
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.fromElements(
+                new WebPageAccessEvent("Anna", "/home", "1000"),
+                new WebPageAccessEvent("Bob", "/favor", "2000")
+        );
+
+        // TODO 3、富函数演示
+        SingleOutputStreamOperator<String> mapDS = webPageAccessEventDS.map(
+                new RichMapFunction<WebPageAccessEvent, String>() {
+                    // 生命周期方法
+                    @Override
+                    public void open(Configuration parameters) throws Exception {
+                        System.out.println("生命周期开始");
+                    }
+
+                    @Override
+                    public void close() throws Exception {
+                        System.out.println("生命周期结束");
+                    }
+
+                    @Override
+                    public String map(WebPageAccessEvent value) throws Exception {
+                        // 获取运行时环境上下文对象
+                        RuntimeContext rc = getRuntimeContext();
+                        // 获取任务id
+                        System.out.println(rc.getJobId());
+                        // 获取子任务索引号
+                        System.out.println(rc.getIndexOfThisSubtask());
+                        // 获取并行度
+                        rc.getNumberOfParallelSubtasks();
+                        // ......
+
+                        return "null";
+                    }
+                }
+        );
+
+        mapDS.print();
+
+        env.execute();
+    }
+}
+```
+
+## 4.5、Flink的数据分区
+
+Flink的数据分区策略与Spark的分区策略相似，当上下游子任务的并行度不同时，那么必然会出现数据应该去往哪个分区的问题。Flink中针对数据分区的问题提供了5中策略，相应地内嵌了5种方法。
+
+### 4.5.1 shuffle—随机分区
+
+通过调用DataStream的`shuffle()`方法，将数据随机地分配到下游算子的并行任务中去。随机分区服从均匀分布，可以将数据均匀地发送到下游任务的并行子任务中。
+
+### 4.5.2 Round-Robin—轮询分区
+
+轮询分区，顾名思义，就是按顺序依次“发牌”。通过调用DataStream的`rebalance()`方法，可以将数据轮询重分区。轮询分区使用的是负载均衡算法，可以将输入流数据平均分配到下游的并行子任务中去。
+
+### 4.5.3 rescale—重缩放分区
+
+重缩放分区和轮询分区非常相似，其底层使用的也是轮询分区，但不同于轮询分区，是面向所有下游并行子任务进行“发牌”，重缩放分区只会面向下游部分并行子任务进行轮询“发牌”。
+
+在重缩放分区中，上游并行子任务是“发牌人”，数据是“扑克牌”，下游并行子任务是”玩家“。轮询分区是，上游每一个“发牌人”面向下游所有”玩家“将自己手中的“牌”轮流发放；重缩放分区是上游每一个“发牌人”针对下游部分”玩家“进行轮询”发牌“。
+
+至于上游”发牌人“会选择哪些”玩家“进行发牌，取决于”发牌人“和”玩家“的数量。
+
+当”发牌人“的数量是”玩家“的整数倍时，每个”发牌人“都会对等量的”玩家“进行”发牌“。
+
+而当”发牌人“数量和”玩家“数量不匹配时，目前不知道是怎样进行重缩放分区。
+
+**另外，需要说明的是，轮询分区和重缩放分区的最为核心的不同点在于其并行子任务的连接机制不同。轮询分区时，上游所有的并行子任务都会与下游所有的并行子任务建立连接，而重缩放分区只会在进行数据分配的并行子任务之间建立连接。**
+
+### 4.5.4 broadcast—广播
+
+广播是一种很重要的数据分配方式，而不是分区方式，因为经过广播之后，每一个分区都会保留一份数据。通过调用DataStream的`broadcast()`，可以将数据复制并发送到下游的每一个并行子任务中。
+
+更为重要的是，经过广播之后的数据流，称为广播流。
+
+### 4.5.5 global—全局分区
+
+全局分区也是一种特殊的分区方式。这种做法非常极端，通过调用`global()`方法，会将所有的输入流数据都发送到下游算子的第一个并行子任务中去。这就相当于强行让下游任务并行度变成了 1，会给下游算子的第一个并行子任务带来极大的压力。
+
+### 4.5.6 自定义分区
+
+当内嵌的分区方式还无法满足需求时，可以通过调用`partitionCustom()`方法来自定义分区策略。
+
+`partitionCustom()`方法需要传入两个参数，第一个是分区器，第二个是分区字段。
+
+**`partitionCustom()`方法定义：**
+
+```Java
+public <K extends Comparable<K>> PartitionOperator<T> partitionCustom(Partitioner<K> partitioner, KeySelector<T, K> keyExtractor) {
+    final TypeInformation<K> keyType = TypeExtractor.getKeySelectorTypes(keyExtractor, getType());
+    
+    return new PartitionOperator<>(
+            this,
+            new Keys.SelectorFunctionKeys<>(keyExtractor, getType(), keyType),
+            clean(partitioner),
+            Utils.getCallLocationName()
+    );
+}
+```
+
+**演示示例：**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-10 16:12
+ * @desc 用户自定义分区
+ */
+public class Demo2 {
+    public static void main(String[] args) throws Exception {
+        // 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        // 2、读取数据源
+        DataStreamSource<String> stringDataStreamSource = env.fromElements(
+                "hello world",
+                "hello java",
+                "hello scala",
+                "hello python",
+                "hello flink"
+        );
+
+        // 3、为每条数据附上一个key
+        SingleOutputStreamOperator<Tuple2<Integer, String>> mapDS = stringDataStreamSource.map(
+                new RichMapFunction<String, Tuple2<Integer, String>>() {
+                    @Override
+                    public Tuple2<Integer, String> map(String value) throws Exception {
+                        Tuple2 data = Tuple2.of(new Random().nextInt(10), value);
+                        return data;
+                    }
+                }
+        );
+
+        // 4、进行自定义分区
+        mapDS.partitionCustom(
+                new Partitioner<Integer>() {
+                    @Override
+                    public int partition(Integer key, int numPartitions) {
+                        // numPartitions是默认的分区数量，取值为CPU的核心数量
+                        return key;
+                    }
+                },
+                new KeySelector<Tuple2<Integer, String>, Integer>() {
+                    @Override
+                    public Integer getKey(Tuple2<Integer, String> value) throws Exception {
+                        return value.f0;
+                    }
+                }
+        ).print(">>>>");
+
+        // 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+## 4.6、Sink Operator
+
+Flink与外部数据的交互，无论是读取数据，还是将数据写出到外部系统，都非常容易。但是问题在于，Flink是一个分布式实时流数据处理框架，对稳定性和容错性要求极高，当Flink与外部系统交互，出现故障时该如何处理？
+
+因此，对于读取数据，Flink内嵌了`addSource()`方法，对于写出数据，Flink相应的内嵌了`addSink()`方法。
+
+在之前的演示示例中，经常使用的`print()`方法就是一种`Sink`算子。
 
