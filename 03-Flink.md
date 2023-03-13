@@ -2140,3 +2140,199 @@ Flink与外部数据的交互，无论是读取数据，还是将数据写出到
 
 在之前的演示示例中，经常使用的`print()`方法就是一种`Sink`算子。
 
+Flink官方对常见的数据存储系统提供了预定义的Sink。
+
+![image-20230313112343633](./03-Flink.assets/image-20230313112343633.png)
+
+![image-20230313112416585](./03-Flink.assets/image-20230313112416585.png)
+
+### 4.6.1、写入到本地文件
+
+在较早的版本中，Flink提供了一些较为简单直接地将数据写入本地文件的方式，例如，`writeAsText()`、`writeAsCsv()`。但这些方法不支持同时写入一份文件，因此，降低了数据写入的效率，在后续版本中逐渐过时。
+
+Flink为数据写入到本地文件专门提供了一个流式文件系统连接器：`StreamingFileSink`。`StreamingFileSink`继承自抽象类`RichSinkFunction`，并集成了Flink一致性检查点机制。
+
+```Java
+public class StreamingFileSink<IN> extends RichSinkFunction<IN> implements CheckpointedFunction, CheckpointListener {
+}
+```
+
+`StreamingFileSink`为批处理和流处理提供了一个统一的Sink，它可以保证精确一次的状态一致性，大大改进了之前流式文件Sink的方式。它的主要操作是将数据写入桶（buckets），每个桶中的数据都可以分割成一个个大小有限的分区文件，这样一来就实现真正意义上的分布式文件存储。在代码中，可以通过各种配置来控制“分桶”的操作，默认的分桶方式是基于时间，每隔一个小时分一次桶。
+
+>   **桶在本地文件中的体现是目录，分区文件是真正存储数据的文件。**
+
+`StreamingFileSink`支持行编码（Row-encoded）和批量编码（Bulk-encoded），不同的编码方式决定的数据的存储方式，行编码表示数据在存储过程中，一条数据占据一行；批量编码一般将数据进行列式存储，例如列式存储Parquet。
+
+两种不同的编码方式都有各自的构建器，通过`StreamingFileSink`调用不同的静态方法能够实现不同数据存储格式。
+
+**演示示例**
+
+```java
+/**
+ * Author: shaco
+ * Date: 2023/3/12
+ * Desc: Sink算子，写入到本地文件
+ */
+public class C012_WriteToLocalFileSink {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        // 此处的并行度设置，主要是为了限制以下Sink算子，如果不设置并行度，默认使用CPU核心数量，那么会有16个分区文件
+        env.setParallelism(4);
+
+        // TODO 2、获取数据源
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+
+        // TODO 3、将数据转换成String
+        SingleOutputStreamOperator<String> resDS = webPageAccessEventDS.map(
+                new MapFunction<WebPageAccessEvent, String>() {
+                    @Override
+                    public String map(WebPageAccessEvent value) throws Exception {
+                        return value.toString();
+                    }
+                }
+        );
+
+        // TODO 4、写入到本地文件中
+        // 行编码模式
+        resDS.addSink(
+                // 此处的泛型方法，泛型表示需要进行持久化的数据的数据类型
+                StreamingFileSink.<String>forRowFormat(new Path("./output/"), new SimpleStringEncoder<>("UTF-8"))
+                        .withRollingPolicy(
+                                DefaultRollingPolicy.builder()
+                                        // 文件回滚策略设置
+                                        .withInactivityInterval(TimeUnit.MINUTES.toMillis(5)) // 设置非活跃时间间隔，单位：毫秒
+                                        .withRolloverInterval(TimeUnit.MINUTES.toMillis(15)) // 设置文件回滚间隔，单位：毫秒
+                                        .withMaxPartSize(1024 * 1024 * 1024) // 设置文件大小，单位：字节
+                                        .build()
+                        )
+                        .build()
+        );
+
+        // TODO 流数据处理执行
+        env.execute();
+    }
+}
+```
+
+**输出结果**
+
+![image-20230313143842111](03-Flink.assets/image-20230313143842111.png)
+
+### 4.6.2、输出到Kafka
+
+Flink预定义Source和Sink都对Kafka做了实现（都在`flink-connector-kafka-2.12`包中），并且Flink与Kafka的连接提供了端到端的精确一次性语义保证。因此Flink与Kafka通常都是成对出现。
+
+>   **Flink写出到Kafka时，在`addSink()`方法中，传入的参数是FlinkKafkaProducer，继承自抽象类TwoPhaseCommitSinkFunction，这是一个实现了“两阶段提交”的RichSinkFunction。两阶段提交提供了Flink向Kafka写入数据的事务型保证，能够真正做到精确一次性的状态一致性。**
+
+**演示示例：写入到Kafka**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-13 14:40
+ * @desc Sink算子，写出到Kafka
+ */
+public class C013_WriteToKafkaSink {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+
+        // TODO 3、转换成String直接写入到Kafka
+        SingleOutputStreamOperator<String> mapDS = webPageAccessEventDS.map(
+                new MapFunction<WebPageAccessEvent, String>() {
+                    @Override
+                    public String map(WebPageAccessEvent value) throws Exception {
+                        return value.toString();
+                    }
+                }
+        );
+
+        mapDS.addSink(
+                new FlinkKafkaProducer<String>("hadoop132:9092", "sink_topic", new SimpleStringSchema())
+        );
+
+        // TODO 4、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+### 4.6.3、输出到Redis
+
+### 4.6.4、输出到Elasticsearch
+
+### 4.6.5、输出到MySQL（JDBC）
+
+将数据写入到MySQL，以及其他JDBC协议的关系型数据库中，需要添加两项依赖，一是Flink的JDBC连接器，二是关系型数据库的JDBC 驱动。
+
+```xml
+<!-- Flink JDBC 连接器依赖包-->
+<dependency>
+    <groupId>org.apache.flink</groupId>
+    <artifactId>flink-connector-jdbc_${scala.binary.version}</artifactId>
+    <version>${flink.version}</version>
+</dependency>
+<!-- MySQL依赖包 -->
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>8.0.26</version>
+</dependency>
+```
+
+**演示示例，将数据写入到MySQL**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-13 19:25
+ * @desc Sink算子演示，写入到MySQL
+ */
+public class C014_WriteToMySQLSink {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、获取数据源
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.fromElements(
+                new WebPageAccessEvent("Anna", "./home", "1000"),
+                new WebPageAccessEvent("Bob", "./favor", "2000")
+        );
+
+        // TODO 3、将数据写入到MySQL中
+        webPageAccessEventDS.addSink(
+                JdbcSink.sink(
+                        "INSERT INTO demo (user, url) VALUES (?, ?)",
+                        new JdbcStatementBuilder<WebPageAccessEvent>() {
+                            @Override
+                            public void accept(PreparedStatement preparedStatement, WebPageAccessEvent webPageAccessEvent) throws SQLException {
+                                preparedStatement.setString(1, webPageAccessEvent.userName);
+                                preparedStatement.setString(2, webPageAccessEvent.url);
+                            }
+                        },
+                        new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
+                                .withUrl("jdbc:mysql://localhost:3306/test")
+                                .withDriverName("com.mysql.cj.jdbc.Driver")
+                                .withUsername("root")
+                                .withPassword("1234")
+                                .build()
+                )
+        );
+
+        // TODO 4、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+### 4.6.6、输出到HDFS
+
+### 4.6.7、自定义Sink
+
+在进行自定义Sink地时候需要考虑从一致性检查点进行故障恢复的问题，对于开发者而言这是较为复杂的事情，因此，不建议自定义Sink。如果需求特殊，必须进行自定义Sink，那么只能牺牲一定的数据准确性。
