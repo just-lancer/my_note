@@ -1695,6 +1695,8 @@ Flink在获取到用户指定的分组“键”后，将计算分组”键“的
 
 **==文档将统一通过实现`KeySelector`接口的方式来指定分组”键“。==**
 
+**==经过分组后的数据流，后续将一致称为“键控流”。==**
+
 **`keyBy()`方法的定义：**
 
 **==`KeyedStream`类虽然也是继承自`DataStream`，但`keyBy()`方法不是算子。==**
@@ -2336,3 +2338,435 @@ public class C014_WriteToMySQLSink {
 ### 4.6.7、自定义Sink
 
 在进行自定义Sink地时候需要考虑从一致性检查点进行故障恢复的问题，对于开发者而言这是较为复杂的事情，因此，不建议自定义Sink。如果需求特殊，必须进行自定义Sink，那么只能牺牲一定的数据准确性。
+
+# 五、时间语义、水位线、窗口
+
+Flink是一个分布式流式数据处理框架，分布式设计带来了更高的吞吐量，而流式数据处理对Flink系统在时间处理方面提出了更高的要求。
+
+**Flink中的时间语义：**
+
+-   **事件时间：是指数据生成时的时间。**
+-   **摄入时间：数据进入Flink系统时的时间**
+-   **处理时间：是指数据被Flink系统处理时的时间**
+
+**在Flink中，时间的单位都是毫秒。**
+
+**==Flink官方建议使用事件事件==**
+
+**水位线：Flink中用来衡量数据流进展的标记，称作“水位线（Watermark）”。**
+
+水位线是一种特殊的数据，是插入数据流中的一个标记点，其内容是一个时间戳。
+
+**水位线的特性：**
+
+-   水位线是插入到数据流中的一个标记， 可以认为是一个特殊的数据
+-   水位线主要的内容是一个时间戳，用来表示当前数据流的进展
+-   水位线是基于数据的时间戳生成的
+-   水位线的时间戳必须单调递增，以确保任务的数据时钟一直向前推进
+-   水位线可以通过设置延迟，来保证正确处理乱序数据
+-   水位线的含义是，当水位线到达时间`t1`，表示在时间`t1`，包含`t1`之前的所有数据均已经达到
+
+## 5.1、水位线的生成策略
+
+根据数据流的不同，会有不同的水位线生成策略。对于有序数据流而言，数据按时间顺序一个一个到来，水位线生成只需要根据数据的时间戳；对于无需数据流而言，由于存在迟到的数据，为了保证数据计算的正确性，需要对迟到数据进行处理，因此在水位线生成时，需要配置数据的乱序程度。
+
+水位线的生成需要依据数据的时间戳，因此水位线生成分为两步，第一步，为数据赋予时间戳，第二步，设置水位线生成策略，生成水位线。
+
+在DataStream API中，调用`assignTimestampAndWatermarks()`方法，用于为数据分配时间戳，以及设置水位线生成策略。Flink对有序数据流和无需数据流提供了内置的水位线生成策略，在使用过程中调用相应的方法即可。
+
+值得说明的是，Flink内置的水位线生成策略都是周期性生成水位线，周期时长是200ms。通过流执行环境的可以设置水位线生成周期：`env.getConfig().setAutoWatermarkInterval(300);`。
+
+**水位线生成代码演示：**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-14 20:19
+ * @desc 水位线生成，代码演示
+ */
+public class C015_GenerateWatermark {
+    public static void main(String[] args) throws Exception {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+
+        // TODO 3、为数据赋予时间戳，并设置水位线生成策略
+        // Flink提供的两种水位线生成策略
+        // 有序数据流水位线生成
+        SingleOutputStreamOperator<WebPageAccessEvent> watermarkGenerateWay1 = webPageAccessEventDS.assignTimestampsAndWatermarks(
+                // 泛型方法，泛型表示数据流中的数据类型
+                WatermarkStrategy.<WebPageAccessEvent>forMonotonousTimestamps()
+                        .withTimestampAssigner( // 分配时间戳
+                                new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                    @Override
+                                    public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                        Long timeStamp = null;
+                                        try {
+                                            timeStamp = sdf.parse(element.accessTime).getTime() * 1000;
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
+                                        return timeStamp;
+                                    }
+                                }
+                        )
+        );
+
+        // 乱序数据流水位线生成
+        SingleOutputStreamOperator<WebPageAccessEvent> watermarkGenerateWay2 = webPageAccessEventDS.assignTimestampsAndWatermarks(
+                WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofMillis(300))
+                        .withTimestampAssigner( // 分配时间戳
+                                new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                    @Override
+                                    public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                        Long timeStamp = null;
+                                        try {
+                                            timeStamp = sdf.parse(element.accessTime).getTime() * 1000;
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
+                                        return timeStamp;
+                                    }
+                                }
+                        )
+        );
+
+        // TODO 4、打印到控制台
+        // watermarkGenerateWay1.print(">>>>>");
+        // watermarkGenerateWay2.print("-----");
+
+        // TODO 5、执行流数据处理
+        // env.execute();
+    }
+}
+```
+
+当Flink内置的水位线生成策略无法满足的需求的时候，可以自定义水位线生成策略，但一般不建议。
+
+**自定义水位线生成策略演示：**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-14 21:24
+ * @desc 自定义水位线生成策略
+ */
+public class Demo03 {
+    public static void main(String[] args) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+
+        // TODO 3、自定义水位线生成策略
+        SingleOutputStreamOperator<WebPageAccessEvent> webPageAccessEventSingleOutputStreamOperator = webPageAccessEventDS.assignTimestampsAndWatermarks(new CustomerWatermarkStrategy());
+    }
+
+    public static class CustomerWatermarkStrategy implements WatermarkStrategy<WebPageAccessEvent> {
+
+        @Override
+        public WatermarkGenerator<WebPageAccessEvent> createWatermarkGenerator(WatermarkGeneratorSupplier.Context context) {
+            WatermarkGenerator<WebPageAccessEvent> CustomerWatermarkGenerator = new WatermarkGenerator<WebPageAccessEvent>() {
+                @Override
+                public void onEvent(WebPageAccessEvent event, long eventTimestamp, WatermarkOutput output) {
+                    // 如果需要定义非周期性生成的水位线，在这里进行定义，并使用output发送出去
+                    // 那么就不需要在onPeriodicEmit方法中写水位线生成策略了
+                }
+
+                @Override
+                public void onPeriodicEmit(WatermarkOutput output) {
+                    // 如果需要定义周期性生成的水位线，在这里进行定义，并使用output发送出去
+                    // 那么就不需要在onPeriodicEmit方法中写水位线生成策略了
+                }
+            };
+
+            return CustomerWatermarkGenerator;
+        }
+    }
+}
+```
+
+**水位线在不同算子并行子任务之间的传递**
+
+水位线是一种特殊的标记，会随着数据在任务之间进行传递。如果不同算子之间的“依赖关系”是“窄依赖”，那么数据和水位线的传递就都很简单。但是生产环境中，不同算子之间的血缘关系并不是“窄依赖”，而是“宽依赖”，因此水位线的传递不是直传。
+
+下游算子的每一个并行子任务都将维护一个“List状态”，用于保存上游每个并行子任务传递的水位线，然后将“List状态”中的最小的水位线作为当前并行子任务的水位线，并且，会将更新后的水位线向下游广播。
+
+在Flink中，水位线承担了时钟的角色。也就是说，如果需要知道现在时间推进到了什么时候，需要去查看当前任务的水位线。在后续的窗口操作中，窗口的闭合，以及定时器的出发都需要通过水位线来判断是否达到了触发的时间。
+
+水位线默认的计算公式是：水位线 = 观察到的最大事件事件 - 延时时间（数据乱序程度） - 1毫秒
+
+其中，减去1毫秒是为了在窗口操作中，将窗口的时间限定为左闭右开，这样就能避免不必要的歧义。
+
+在数据流开始之前，Flink会插入一个大小是`-Long.MAX_VALUE`的水位线，在数据流结束的时候，Flink会插入一个`Long.MAX_VALUE`的水位线，保证所有窗口闭合以及所有的定时器都被触发。
+
+对于有界数据流，Flink在读取数据的时候，会插入两次水位线，在最开始时插入`-Long.MAX_VALUE`的水位线，在最后插入`-Long.MAX_VALUE`的水位线，这样就能保证触发所有的定时器了。
+
+## 5.2、窗口操作
+
+### 5.2.1 窗口基本介绍
+
+Flink定义时间语义和水位线，目的是为了对数据做基于时间的相关处理，其中最为常见的操作就是窗口操作。
+
+在前面的演示示例中，每当一条新的数据到来，经过Flink处理后就会处理该数据，并将处理结果输出（打印控制台）。然而当大量数据同时到来，频繁地更新结果，会给Flink系统带来很大的压力。对此，解决方法就是，收集一段时间的数据，然后定期更新结果，而不是每次新数据到来都更新数据。这其实就是开启了一个“窗口”，将符合条件的数据全部收集到之后，当达到一定条件就对“窗口”中的数据进行计算，并输出结果。
+
+区别于Hive、Spark中数据窗口的理解，在Flink中，窗口是一个桶，数据到来后，如果数据满足这个桶的条件，那么这条数据就会被分配到这个桶中，数据源源不断的到来，时间也不断地向前推进，当到达窗口指定的时间后，窗口就会关闭，进而停止收集数据，然后触发计算并输出结果。
+
+**窗口的分类：**
+
+-   **时间窗口：以时间点来定义窗口的开始和结束，窗口中的数据是一段时间内的数据，这个时间可以是事件时间，也可以是处理时间。**
+    -   **滑动窗口：窗口大小固定，滑动步长不确定**
+    -   **滚动窗口：当滑动窗口的滑动步长等于窗口大小时，滑动窗口就成为了滚动窗口**
+    -   **会话窗口：利用会话超时失效的机制来定义窗口。当第一条数据到来之后会开启会话窗口，如果在设置的会话超时时间内有数据到来，那么会话窗口就会一直开启，如果会话超时时间内没有接收到数据，那么会话窗口就会关闭。会话超时时间外的数据再次到来时，会开启新的超时会话窗口。在有迟到数据的情况下，会话窗口非常复杂。**
+-   **计数窗口：基于窗口收集到的数据的个数，来决定窗口的启停状态。**
+-   **全局窗口：会把相同key的所有数据都分配到同一个窗口中，换句话说，就和没有分配窗口一样，因为窗口把所有数据都放到一起了。对于无界流数据，全局窗口没有结束的时候，因此不会触发计算，如果需要全局窗口进行计算处理，需要自定义触发器（Trigger）。计数窗口的底层实现是基于全局窗口。**
+
+### 5.2.2 窗口API介绍
+
+在介绍窗口API前，先对数据流的分类做一个整理，数据流可以分为：键控流（Keyed-Stream）、非键控流（Non-Keyed-Stream）、广播流（Broadcast-Stream）。
+
+在Flink中，虽然对键控流和非键控流都提供了相应的API，但Flink并不推荐使用非键控流，原因是，在一些场景下，非键控流会将所有的数据分配到一个并行子任务中，这会给Flink数据处理带来性能上的压力。因此，在不必要的情况下，都推荐使用键控流。
+
+无论是键控流还是非键控流，其窗口API的调用过程都是相同的，都是数据流调用API设置窗口类型（开窗口），随后调用窗口函数，定义窗口收集的数据的计算逻辑。
+
+**键控流窗口API**
+
+```java 
+stream.keyBy(...)
+	  .window(...)
+	  .xxx(...)
+```
+
+**非键控流窗口API**
+
+```java
+stream.windowAll(...)
+      .xxx(...)
+```
+
+**窗口分配器**
+
+在调用API开窗口时，需要传入一个`WindowAssigner`，即窗口分配器，Flink为上述介绍的窗口提供了不同的预定义，在程序开发时，只需根据需要进行调用即可。
+
+![image-20230317115859135](./03-Flink.assets/image-20230317115859135.png)
+
+需要留意的是，这些窗口分配器的构造器都是私有的，一般都是通过调用其静态方法，获取其实现类对象。
+
+**窗口函数**
+
+数据流调用`window()`方法或者`windowAll()`方法之后，返回结果都是`WindowedStream`，`WindowedStream`需要调用聚合函数才能再次返回`SingleOutputStreamOperator`。
+
+常见的窗口函数与之前介绍的算子基本相同：`sum`、`min`、`max`、`minBy`、`maxBy`、`reduce`、`aggregate`。
+
+**==值得说明的是，`sum`、`min`、`max`、`minBy`、`maxBy`、`reduce`等算子的底层实现都是通过实现`aggregate`算子的函数式接口`AggregateFunction`实现的。==**
+
+**`AggregateFunction`接口的定义：**
+
+```Java
+public interface AggregateFunction<IN, ACC, OUT> extends Function, Serializable {
+
+    ACC createAccumulator();
+
+    ACC add(IN value, ACC accumulator);
+
+    OUT getResult(ACC accumulator);
+
+    ACC merge(ACC a, ACC b);
+}
+```
+
+`AggregateFunction`接口定义了三种泛型和四个抽象方法。其中泛型`IN`表示输入数据的类型，泛型`ACC`表示中间计算结果的类型，即累加器的类型，泛型`OUT`表示向下游输出数据的数据类型。
+
+**抽象方法说明：**
+
+-   **`createAccumulator()`：初始化累加器，即定义累加器的初始状态，该方法在整个聚合过程中只会被调用一次**
+-   **`add()`：定义输入数据和累加器之间的计算规则，返回值仍旧为一个累加器。该方法在聚合过程中，每到来一条数据就会进行一次调用**
+-   **`getResult()`：定义从累加器中获取输出结果的逻辑，这个方法在聚合过程中，只在窗口闭合，需要向下游输出结果时进行调用**
+-   **`merge()`：用于定义合并两个累加器的数据的逻辑。这个方法只会在需要进行窗口合并的时候才会被调用，例如会话窗口的使用时，会涉及到窗口合并**
+
+这些算子在窗口中对数据的处理也是一样的流程，都是来一条数据就计算一次结果，但不同于一般的流数据处理，在窗口中，数据的虽然是来一条就计算一次，但其计算结果用累加器保存，只有当窗口关闭，需要对外输出结果时，才会直接将累加器的结果对外输出。
+
+**演示示例：使用`reduce`窗口函数，每10秒计算一次用户的PV**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-17 10:57
+ * @desc 窗口操作，窗口分配器 + 窗口函数，演示需求：每10秒钟计算一次用户的PV
+ */
+public class C016_WindowAssignerAndReduce {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、获取数据源
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+
+        // TODO 3、为数据分配时间戳，设置水位线生成策略
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+        SingleOutputStreamOperator<WebPageAccessEvent> webPageAccessEventDSWithTime = webPageAccessEventDS.assignTimestampsAndWatermarks(
+                WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                        .withTimestampAssigner(
+                                new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                    @Override
+                                    public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                        long parseTime = 0L;
+                                        try {
+                                            Date parse = sdf.parse(element.accessTime);
+                                            parseTime = parse.getTime();
+                                        } catch (Exception e) {
+                                            e.printStackTrace();
+                                        }
+                                        return parseTime;
+                                    }
+                                }
+                        )
+        );
+
+        // TODO 4、对WebPageAccessEvent进行映射，并进行分组
+        SingleOutputStreamOperator<Tuple2<String, Long>> reduceDS = webPageAccessEventDSWithTime.map(
+                new MapFunction<WebPageAccessEvent, Tuple2<String, Long>>() {
+                    @Override
+                    public Tuple2<String, Long> map(WebPageAccessEvent value) throws Exception {
+                        return Tuple2.of(value.userName, 1L);
+                    }
+                }
+        )
+                .keyBy( // 按用户分组
+                        new KeySelector<Tuple2<String, Long>, String>() {
+                            @Override
+                            public String getKey(Tuple2<String, Long> value) throws Exception {
+                                return value.f0;
+                            }
+                        }
+                )
+                .window(SlidingEventTimeWindows.of(Time.seconds(10), Time.seconds(15))) // 事件时间的滑动窗口，窗口大小10，滑动步长15
+                // .window(SlidingProcessingTimeWindows.of(Time.seconds(10), Time.seconds(15))) // 处理时间的滚动窗口，窗口大小10，滑动步长15
+                // .window(TumblingEventTimeWindows.of(Time.seconds(10)) // 事件时间的滑动窗口，窗口大小10
+                // .window(TumblingProcessingTimeWindows.of(Time.seconds(10)) // 处理时间的滑动窗口，窗口大小10
+                .reduce(
+                        new ReduceFunction<Tuple2<String, Long>>() {
+                            @Override
+                            public Tuple2<String, Long> reduce(Tuple2<String, Long> value1, Tuple2<String, Long> value2) throws Exception {
+                                // 每10秒计算一次用户PV
+                                return Tuple2.of(value1.f0, value1.f1 + value2.f1);
+                            }
+                        }
+                );
+
+        // TODO 5、输出到控制台
+        webPageAccessEventDSWithTime.print();
+        reduceDS.print(">>>>>>");
+
+        // TODO 6、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**演示示例：使用`aggregate`窗口函数计算PV/UV，即人均重复访问量**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-03-17 14:12
+ * @desc 窗口操作，窗口分配器 + 窗口函数，演示需求：使用aggregate()，求人均重复访问量，即PV/UV
+ * PV是所有站点的访问量，UV是是独立用户数量
+ */
+public class C017_WindowAssignerAndAggregate {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源，并分配时间戳和设置水位线生成策略
+        SingleOutputStreamOperator<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource())
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                                .withTimestampAssigner(
+                                        new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                            @Override
+                                            public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                                return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                            }
+                                        }
+                                )
+                );
+
+        // TODO 3、由于需要计算全部站点的访问量，因此，需要将所有的用户访问都放在一个数据流中，又因为Flink推荐使用键控流，因此，此处将所有数据直接分到同一个组里面
+        SingleOutputStreamOperator<Double> aggregateDS = webPageAccessEventDS
+                .keyBy(
+                        new KeySelector<WebPageAccessEvent, Boolean>() {
+                            @Override
+                            public Boolean getKey(WebPageAccessEvent value) throws Exception {
+                                return true;
+                            }
+                        }
+                )
+                .window(TumblingEventTimeWindows.of(Time.seconds(10)))
+                .aggregate(
+                        new AggregateFunction<WebPageAccessEvent, Tuple2<HashSet<String>, Long>, Double>() {
+                            @Override
+                            public Tuple2<HashSet<String>, Long> createAccumulator() {
+                                // 初始化累加器
+                                return Tuple2.of(new HashSet<String>(), 0L);
+                            }
+
+                            @Override
+                            public Tuple2<HashSet<String>, Long> add(WebPageAccessEvent value, Tuple2<HashSet<String>, Long> accumulator) {
+                                // 进行计算
+                                accumulator.f0.add(value.userName);
+                                return Tuple2.of(accumulator.f0, accumulator.f1 + 1L);
+                            }
+
+                            @Override
+                            public Double getResult(Tuple2<HashSet<String>, Long> accumulator) {
+                                return accumulator.f1 / (double) accumulator.f0.size();
+                            }
+
+                            @Override
+                            public Tuple2<HashSet<String>, Long> merge(Tuple2<HashSet<String>, Long> a, Tuple2<HashSet<String>, Long> b) {
+                                // 合并累加器，有一些情况下，需要对多条流的累加器进行合并，需要定义合并规则
+                                // 比如说，在会话窗口中，就需要进行窗口合并
+                                a.f0.addAll(b.f0);
+                                return Tuple2.of(a.f0, a.f1 + b.f1);
+                            }
+                        }
+                );
+
+        // TODO 4、打印结果到控制台
+        webPageAccessEventDS.print();
+        aggregateDS.print(">>>>>>");
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**==以上列举以及演示的窗口函数，其数据处理思路都是来一条数据就计算一次，将计算结果保存到累加器中，在需要输出的时候，从累加其中提取出输出结果即可。这种流式数据处理效率较高，并且对Flink系统的压力较小。但有时候，数据计算必须要等到所有数据都到齐才能进行计算，那么以上介绍的窗口函数就不可以使用，例如求数据的中位数，此时需要用到全量窗口函数。==**
+
+全量窗口函数会将所有数据都收集到之后，再根据计算逻辑对数据进行计算，这是一种批处理思想。虽然这样做会降低数据计算效率，但当需求特殊时，就不得不这么做。
+
+键控流的全窗口函数有两个`WindowFunction`和`ProcessWindowFunction`。`WindowFunction`出现较早，基于`WindowedStream`调用`apply()`方法传入`WindowFunction`接口的实现类，便能使用全窗口函数。
+
+**`WindowFunction`接口的定义**
+
+```java
+public interface WindowFunction<IN, OUT, KEY, W extends Window> extends Function, Serializable {
+
+    void apply(KEY key, W window, Iterable<IN> input, Collector<OUT> out) throws Exception;
+}
+```
+
+**接口中定义了四个泛型，泛型`IN`表示输入数据的类型，泛型`OUT`表示输出数据的类型，泛型`KEY`表示键控流键的数据类型，而`W`表示窗口的类型，对于时间窗口，一般使用`TimeWindow`作为**

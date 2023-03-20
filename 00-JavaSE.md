@@ -3730,7 +3730,7 @@ LinkedHashSet作为HashSet的子类，在添加数据的同时，每个数据还
 
 -   HashMap map = new HashMap()
     -   在实例化以后，底层创建了长度是16的一维数组Entry[] table。
-    -   ...可能已经执行过多次put...
+    -   ...随后执行过多次put...
 -   map.put(key1,value1)
     -   首先，调用key1所在类的hashCode()计算key1哈希值，此哈希值经过某种算法计算以后，得到在Entry数组中的存放位置
     -   如果此位置上的数据为空，此时的key1-value1添加成功。 ----情况1
