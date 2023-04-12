@@ -2351,7 +2351,7 @@ Flink是一个分布式流式数据处理框架，分布式设计带来了更高
 
 **在Flink中，时间的单位都是毫秒。**
 
-**==Flink官方建议使用事件事件==**
+**==Flink官方建议使用事件时间==**
 
 **水位线：Flink中用来衡量数据流进展的标记，称作“水位线（Watermark）”。**
 
@@ -2364,7 +2364,7 @@ Flink是一个分布式流式数据处理框架，分布式设计带来了更高
 -   水位线是基于数据的时间戳生成的
 -   水位线的时间戳必须单调递增，以确保任务的数据时钟一直向前推进
 -   水位线可以通过设置延迟，来保证正确处理乱序数据
--   水位线的含义是，当水位线到达时间`t1`，表示在时间`t1`，包含`t1`之前的所有数据均已经达到
+-   水位线的含义是，当水位线到达时间`t1`，表示在时间`t1`（包含`t1`）之前的所有数据均已经达到
 
 ## 5.1、水位线的生成策略
 
@@ -2538,7 +2538,7 @@ Flink定义时间语义和水位线，目的是为了对数据做基于时间的
 
 无论是键控流还是非键控流，其窗口API的调用过程都是相同的，都是数据流调用API设置窗口类型（开窗口），随后调用窗口函数，定义窗口收集的数据的计算逻辑。
 
-**键控流窗口API**
+-   **键控流窗口API**
 
 ```java 
 stream.keyBy(...)
@@ -2546,14 +2546,14 @@ stream.keyBy(...)
 	  .xxx(...)
 ```
 
-**非键控流窗口API**
+-   **非键控流窗口API**
 
 ```java
 stream.windowAll(...)
       .xxx(...)
 ```
 
-**窗口分配器**
+-   **窗口分配器**
 
 在调用API开窗口时，需要传入一个`WindowAssigner`，即窗口分配器，Flink为上述介绍的窗口提供了不同的预定义，在程序开发时，只需根据需要进行调用即可。
 
@@ -2561,11 +2561,15 @@ stream.windowAll(...)
 
 需要留意的是，这些窗口分配器的构造器都是私有的，一般都是通过调用其静态方法，获取其实现类对象。
 
-**窗口函数**
+-   **窗口函数**
 
 数据流调用`window()`方法或者`windowAll()`方法之后，返回结果都是`WindowedStream`，`WindowedStream`需要调用聚合函数才能再次返回`SingleOutputStreamOperator`。
 
-常见的窗口函数与之前介绍的算子基本相同：`sum`、`min`、`max`、`minBy`、`maxBy`、`reduce`、`aggregate`。
+-   **增量窗口函数：**
+
+区别于批处理，增量窗口函数在窗口每到来一条数据就会调用一次，对数据进行一次计算。也区别于一般的`Flink`程序，每到来一条数据就计算一次，并输出结果，增量窗口函数只会在窗口关闭时，将窗口计算结果输出。因此，增量窗口函数是是事件驱动型，窗口每到来一条数据就会对数据进行一次计算，当窗口关闭时，将计算的结果进行输出。
+
+常见的增量窗口函数与之前介绍的算子基本相同：`sum`、`min`、`max`、`minBy`、`maxBy`、`reduce`、`aggregate`。
 
 **==值得说明的是，`sum`、`min`、`max`、`minBy`、`maxBy`、`reduce`等算子的底层实现都是通过实现`aggregate`算子的函数式接口`AggregateFunction`实现的。==**
 
@@ -2754,11 +2758,21 @@ public class C017_WindowAssignerAndAggregate {
 }
 ```
 
-**==以上列举以及演示的窗口函数，其数据处理思路都是来一条数据就计算一次，将计算结果保存到累加器中，在需要输出的时候，从累加其中提取出输出结果即可。这种流式数据处理效率较高，并且对Flink系统的压力较小。但有时候，数据计算必须要等到所有数据都到齐才能进行计算，那么以上介绍的窗口函数就不可以使用，例如求数据的中位数，此时需要用到全量窗口函数。==**
+-   **全量窗口函数：**
 
-全量窗口函数会将所有数据都收集到之后，再根据计算逻辑对数据进行计算，这是一种批处理思想。虽然这样做会降低数据计算效率，但当需求特殊时，就不得不这么做。
+在特殊的需求和场景下，数据的计算必须要等到所有数据到齐之后才能进行计算，那么此时就不能使用增量窗口函数，需要使用全量窗口函数。
+
+全量窗口函数会将所有数据都收集到之后，再根据计算逻辑对数据进行计算，这是一种批处理思想。
 
 键控流的全窗口函数有两个`WindowFunction`和`ProcessWindowFunction`。`WindowFunction`出现较早，基于`WindowedStream`调用`apply()`方法传入`WindowFunction`接口的实现类，便能使用全窗口函数。
+
+-   **全窗口函数`WindowFunction`**
+
+```java
+stream.keyBy(...)
+	  .window(...)
+	  .apply(new MyWindowFunction)
+```
 
 **`WindowFunction`接口的定义**
 
@@ -2769,4 +2783,400 @@ public interface WindowFunction<IN, OUT, KEY, W extends Window> extends Function
 }
 ```
 
-**接口中定义了四个泛型，泛型`IN`表示输入数据的类型，泛型`OUT`表示输出数据的类型，泛型`KEY`表示键控流键的数据类型，而`W`表示窗口的类型，对于时间窗口，一般使用`TimeWindow`作为**
+**接口中定义了四个泛型，泛型`IN`表示输入数据的类型，泛型`OUT`表示输出数据的类型，泛型`KEY`表示键控流`key`的数据类型，而`W`表示窗口的类型，对于时间窗口，一般使用`TimeWindow`作为改泛型的数据类型；对于其他类型的窗口，如计数窗口，会话窗口，则使用`GlobalWindow`作为改泛型的数据类型。**
+
+**`WindowFunction`接口定义的抽象方法`apply()`有一个参数`input`，类型为`Iterable<IN>`，该参数即为进入当前窗口的所有数据构成的一个迭代器集合。另一个参数`window`，类型为`w`，改参数即为当前窗口对象，利用该参数调用相应的方法，能够获取当前窗口的相关信息。而参数`out`，类型为`Collettor<OUT>`，则是用于将数据向下游输出数据。**
+
+**演示示例：使用`WindowFunction`计算：每隔20秒统计一次UV**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-04-11 15:19
+ * @desc 窗口操作，全量窗口函数WindowFunction，需求：每隔20s统计一次UV
+ */
+public class C018_WindowAssignerAndWindowFunction {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、获取流数据处理环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、获取数据源，并分配事件的事件戳和设置水位线生成策略
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+        SingleOutputStreamOperator<WebPageAccessEvent> eventDS = webPageAccessEventDS.assignTimestampsAndWatermarks(
+                WatermarkStrategy
+                        .<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ZERO)
+                        .withTimestampAssigner(new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                            @Override
+                            public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                            }
+                        })
+        );
+
+        // TODO 3、利用键控流统计UV：开事件时间滚动窗口，窗口大小20s
+        KeyedStream<WebPageAccessEvent, String> webPageAccessEventKDS = eventDS.keyBy(
+                new KeySelector<WebPageAccessEvent, String>() {
+                    @Override
+                    public String getKey(WebPageAccessEvent value) throws Exception {
+                        return "true";
+                    }
+                }
+        );
+
+        SingleOutputStreamOperator<String> resultDS = webPageAccessEventKDS.window(TumblingEventTimeWindows.of(Time.seconds(20)))
+                .apply(
+                        new WindowFunction<WebPageAccessEvent, String, String, TimeWindow>() {
+                            @Override
+                            public void apply(String s, TimeWindow window, Iterable<WebPageAccessEvent> input, Collector<String> out) throws Exception {
+                                HashSet<String> userColl = new HashSet<>();
+                                Long count = 0L;
+                                for (WebPageAccessEvent event : input) {
+                                    if (!userColl.contains(event.userName)) {
+                                        userColl.add(event.userName);
+                                        count++;
+                                    }
+                                }
+                                long end = window.getEnd();
+                                long start = window.getStart();
+                                out.collect(start + " ~ " + end + "，" + count);
+                            }
+                        }
+                );
+
+        // TODO 4、打印控制台
+        eventDS.print();
+        resultDS.print(">>>>");
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+-   **全量窗口函数`ProcessWindowFunction`**
+
+```java
+stream.keyBy(...)
+	  .window(...)
+	  .process(new MyProcessWindowFunction)
+```
+
+**`ProcessWindowFunction`抽象类的定义**
+
+```java
+public abstract class ProcessWindowFunction<IN, OUT, KEY, W extends Window> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = 1L;
+
+    /**
+     * Evaluates the window and outputs none or several elements.
+     *
+     * @param key The key for which this window is evaluated.
+     * @param context The context in which the window is being evaluated.
+     * @param elements The elements in the window being evaluated.
+     * @param out A collector for emitting elements.
+     * @throws Exception The function may throw exceptions to fail the program and trigger recovery.
+     */
+    public abstract void process(KEY key, Context context, Iterable<IN> elements, Collector<OUT> out) throws Exception;
+
+    /**
+     * Deletes any state in the {@code Context} when the Window expires (the watermark passes its
+     * {@code maxTimestamp} + {@code allowedLateness}).
+     *
+     * @param context The context to which the window is being evaluated
+     * @throws Exception The function may throw exceptions to fail the program and trigger recovery.
+     */
+    public void clear(Context context) throws Exception {}
+
+    /** The context holding window metadata. */
+    public abstract class Context implements java.io.Serializable {
+        /** Returns the window that is being evaluated. */
+        public abstract W window();
+
+        /** Returns the current processing time. */
+        public abstract long currentProcessingTime();
+
+        /** Returns the current event-time watermark. */
+        public abstract long currentWatermark();
+
+        /**
+         * State accessor for per-key and per-window state.
+         *
+         * <p><b>NOTE:</b>If you use per-window state you have to ensure that you clean it up by
+         * implementing {@link ProcessWindowFunction#clear(Context)}.
+         */
+        public abstract KeyedStateStore windowState();
+
+        /** State accessor for per-key global state. */
+        public abstract KeyedStateStore globalState();
+
+        /**
+         * Emits a record to the side output identified by the {@link OutputTag}.
+         *
+         * @param outputTag the {@code OutputTag} that identifies the side output to emit to.
+         * @param value The record to emit.
+         */
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+    }
+}
+```
+
+**类中定义了四种泛型，泛型`IN`表示输入数据的类型；泛型`OUT`表示输出数据的类型；泛型`KEY`表示当前窗口用于计算哪个`key`的数据；泛型`W`表示当前窗口的类型。**
+
+**类中定义的抽象方法`process()`有四个参数，参数`KEY key`表示键控流的`key`；参数`Context context`表示当前窗口的上下文对象，该对象包含了当前窗口的所有元数据信息；参数`Iterable<IN> elements`表示当前窗口收集到的所有数据构成的可迭代对象；参数`Collector<OUT> out`是一个用于向下游发送数据的收集器。**
+
+**抽象类`ProcessWindowFunction`是Flink八个处理函数之一，相较于一般的窗口函数或者算子而言，处理函数提供了更为丰富的信息，使得开发者拥有更大的开发自由度，而处理函数提供的丰富信息来源于其内部定义的抽象内部类`Context`。**
+
+**对于`ProcessWindowFuntion`而言，抽象内部类`Context`能够：**
+
+-   **获取当前窗口对象：`.window()`**
+-   **获取当前的处理时间：`.currentProcessintTime()`**
+-   **获取当前的事件时间水位线：`.currentWatermark()`**
+-   **获取当前窗口的状态，以及与当前`key`有关的状态：`.windowState()`**
+-   **获取当前`key`的全局状态：`.globalState()`**
+-   **向侧输出流发送数据：`.output()`**
+
+**==处理函数`ProcessWindowFunction`无法获取时间相关的服务，因此无法进行定时器相关的代码设计。==**
+
+**演示示例：使用`ProcessWindowFunction`计算：每隔20秒统计一次UV**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-04-12 10:21
+ * @desc 窗口操作，全量窗口函数ProcessWindowFunction，需求：每隔20s统计一次UV
+ */
+public class C019_WindowAssignerAndProcessWindowFunction {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、获取流数据处理环镜
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、获取数据源，并为数据源设置事件时间戳，并设置水位线生成策略
+        DataStreamSource<WebPageAccessEvent> inputDS = env.addSource(new WebPageAccessEventSource());
+        SingleOutputStreamOperator<WebPageAccessEvent> DS = inputDS.assignTimestampsAndWatermarks(
+                WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(0))
+                        .withTimestampAssigner(
+                                new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                    @Override
+                                    public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                        return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                    }
+                                }
+                        )
+        );
+
+        // TODO 3、开窗，进行数据统计，开启20秒滚动窗口
+        SingleOutputStreamOperator<String> process = DS.keyBy(
+                new KeySelector<WebPageAccessEvent, String>() {
+                    @Override
+                    public String getKey(WebPageAccessEvent value) throws Exception {
+                        return "true";
+                    }
+                }
+        ).window(TumblingEventTimeWindows.of(Time.seconds(20)))
+                .process(
+                        new ProcessWindowFunction<WebPageAccessEvent, String, String, TimeWindow>() {
+                            @Override
+                            public void process(String s, Context context, Iterable<WebPageAccessEvent> elements, Collector<String> out) throws Exception {
+                                HashSet<String> userColl = new HashSet<>();
+
+                                for (WebPageAccessEvent event : elements) {
+                                    userColl.add(event.userName);
+                                }
+
+                                long end = context.window().getEnd();
+                                long start = context.window().getStart();
+                                out.collect("窗口：" + start + " ~ " + end + " " + userColl.size() + "");
+
+                            }
+                        }
+                );
+
+        process.print(">>>>");
+        inputDS.print();
+
+        env.execute();
+    }
+}
+```
+
+-   **增量聚合函数和全量窗口函数的结合使用**
+
+增量窗口函数对每一条到达窗口的数据都立刻进行计算，将计算结果更新到累加器中，因此数据计算速度快；全量窗口函数则需要收集到所有数据之后才进行计算，但能够提供窗口信息，相当于全量窗口函数只进行数据收集，并提供该窗口的所有元数据信息，至于需要做怎样的计算则是完全由开发者定义，这样的设计使得窗口计算更为灵活。
+
+为了兼顾增量窗口函数和全量窗口函数的优点，数据流开窗后，调用`reduce()`或`aggregate()`方法传入增量窗口函数时，还可以传入全量窗口函数，进而将增量窗口函数和全量窗口函数结合使用。
+
+![image-20230412175335077](./03-Flink.assets/image-20230412175335077.png)
+
+在数据收集的过程中，每到来一条数据都将调用一次增量窗口函数，对数据进行一次计算，并将结果保存到累加器中；等到窗口触发计算时，则将累加器的结果传递到全量窗口函数的迭代器中，随后对结果进行输出。因此在迭代器中只会有一个数据。
+
+**演示示例：增量窗口函数，全量窗口函数结合使用：统计10秒内，url的点击数量，每隔5秒更新一次结果。**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-04-12 18:04
+ * @desc 窗口操作，增量窗口函数和全量窗口函数结合使用，统计10秒内，url的点击数量，每隔5秒更新一次
+ */
+public class C020_WindowOperateIncreseAndFullWindowFunciton {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、获取流数据执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源，设置时间戳，设置水位线生成策略
+        DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
+        SingleOutputStreamOperator<WebPageAccessEvent> webPageAccessEventTDS = webPageAccessEventDS.assignTimestampsAndWatermarks(
+                WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(0))
+                        .withTimestampAssigner(
+                                new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                    @Override
+                                    public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                        return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                    }
+                                }
+                        )
+        );
+
+        // TODO 3、数据处理
+        // 按键分组，根据url进行分组
+        KeyedStream<WebPageAccessEvent, String> webPageAccessEventKDS = webPageAccessEventTDS.keyBy(
+                new KeySelector<WebPageAccessEvent, String>() {
+                    @Override
+                    public String getKey(WebPageAccessEvent value) throws Exception {
+                        return value.url;
+                    }
+                }
+        );
+
+        // 开窗，开滑动窗口，窗口大小10，滑动步长5
+        SingleOutputStreamOperator<UrlClickCountWindow> urlClick = webPageAccessEventKDS.window(SlidingEventTimeWindows.of(Time.seconds(10), Time.seconds(5)))
+                .aggregate(
+                        new AggregateFunction<WebPageAccessEvent, Long, Long>() {
+                            @Override
+                            public Long createAccumulator() {
+                                return 0L;
+                            }
+
+                            @Override
+                            public Long add(WebPageAccessEvent value, Long accumulator) {
+                                return accumulator + 1;
+                            }
+
+                            @Override
+                            public Long getResult(Long accumulator) {
+                                return accumulator;
+                            }
+
+                            @Override
+                            public Long merge(Long a, Long b) {
+                                return null;
+                            }
+                        }
+                        ,
+                        // 输出数据类型为UrlClickCountWindow，各属性分别代表：窗口开始时间，窗口结束时间，url，url点击的次数
+                        new ProcessWindowFunction<Long, UrlClickCountWindow, String, TimeWindow>() {
+                            @Override
+                            public void process(String url, Context context, Iterable<Long> elements, Collector<UrlClickCountWindow> out) throws Exception {
+                                long start = context.window().getStart();
+                                long end = context.window().getEnd();
+                                out.collect(new UrlClickCountWindow(start, end, url, elements.iterator().next()));
+                            }
+                        }
+                );
+
+        // TODO 4、打印输出流到控制台
+        urlClick.print(">>>>");
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**自定义输出`POJO`类**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-04-12 20:14
+ * @desc 定义一个输出用的POJO类，用于测试用例C020的输出
+ */
+public class UrlClickCountWindow {
+    public Long start;
+    public Long end;
+    public String url;
+    public Long count;
+
+    public UrlClickCountWindow() {
+    }
+
+    public UrlClickCountWindow(Long start, Long end, String url, Long count) {
+        this.start = start;
+        this.end = end;
+        this.url = url;
+        this.count = count;
+    }
+
+    public Long getStart() {
+        return start;
+    }
+
+    public void setStart(Long start) {
+        this.start = start;
+    }
+
+    public Long getEnd() {
+        return end;
+    }
+
+    public void setEnd(Long end) {
+        this.end = end;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public Long getCount() {
+        return count;
+    }
+
+    public void setCount(Long count) {
+        this.count = count;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        UrlClickCountWindow that = (UrlClickCountWindow) o;
+        return Objects.equals(start, that.start) &&
+                Objects.equals(end, that.end) &&
+                Objects.equals(url, that.url) &&
+                Objects.equals(count, that.count);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(start, end, url, count);
+    }
+
+    @Override
+    public String toString() {
+        return "UrlClickCountWindow{" +
+                "start=" + start +
+                ", end=" + end +
+                ", url='" + url + '\'' +
+                ", count=" + count +
+                '}';
+    }
+}
+```
+
