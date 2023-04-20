@@ -1960,7 +1960,7 @@ public interface RichFunction extends Function {
     -   **`close()`方法，方法定义的逻辑会随着生命周期的结束而被执行，因此，类似于关闭数据库连接，释放资源的操作适合定义在`close()`方法中**
 -   **运行时环境，指算子的并行子任务在运行时所处的环境，通过运行时环境的上下文对象，能够获取并行子任务相关的元数据信息，例如，并行子任务的名称、并行度、以及索引号。**
     -   **`getRuntimeContext()`方法，用于获取运行时上下文对象**
-    -   **`getIterationRuntimeContext()`，用于获取运行时上下问对象，相较于`getRuntimeContext()`方法，`getIterationRuntimeContext()`方法获得的上下文对象能够获取更多的信息，例如累加器的值**
+    -   **`getIterationRuntimeContext()`，用于获取运行时上下文对象，相较于`getRuntimeContext()`方法，`getIterationRuntimeContext()`方法获得的上下文对象能够获取更多的信息，例如累加器的值**
     -   **`setRuntimeContext(RuntimeContext t)`，用于设置运行时对象，一般不使用**
 
 **演示示例：**
@@ -3180,3 +3180,308 @@ public class UrlClickCountWindow {
 }
 ```
 
+### 5.2.3 其他窗口API介绍
+
+#### 5.2.3.1 触发器
+
+触发器是`WindowedStream`的专属方法，主要用于控制窗口什么时候触发计算，即定义什么时候调用窗口函数。基于`WindowedStream`调用`trigger()`方法即可自定义窗口的触发时机。`trigger()`方法需要传入一个`Trigger`类型的参数，该参数就是触发器。
+
+`Trigger`是一个抽象类，具体定义如下：
+
+```Java
+public abstract class Trigger<T, W extends Window> implements Serializable {
+
+    private static final long serialVersionUID = -4104633972991191369L;
+
+    /**
+     * Called for every element that gets added to a pane. The result of this will determine whether
+     * the pane is evaluated to emit results.
+     *
+     * @param element The element that arrived.
+     * @param timestamp The timestamp of the element that arrived.
+     * @param window The window to which the element is being added.
+     * @param ctx A context object that can be used to register timer callbacks.
+     */
+    public abstract TriggerResult onElement(T element, long timestamp, W window, TriggerContext ctx)
+            throws Exception;
+
+    /**
+     * Called when a processing-time timer that was set using the trigger context fires.
+     *
+     * @param time The timestamp at which the timer fired.
+     * @param window The window for which the timer fired.
+     * @param ctx A context object that can be used to register timer callbacks.
+     */
+    public abstract TriggerResult onProcessingTime(long time, W window, TriggerContext ctx)
+            throws Exception;
+
+    /**
+     * Called when an event-time timer that was set using the trigger context fires.
+     *
+     * @param time The timestamp at which the timer fired.
+     * @param window The window for which the timer fired.
+     * @param ctx A context object that can be used to register timer callbacks.
+     */
+    public abstract TriggerResult onEventTime(long time, W window, TriggerContext ctx)
+            throws Exception;
+
+    /**
+     * Returns true if this trigger supports merging of trigger state and can therefore be used with
+     * a {@link org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner}.
+     *
+     * <p>If this returns {@code true} you must properly implement {@link #onMerge(Window,
+     * OnMergeContext)}
+     */
+    public boolean canMerge() {
+        return false;
+    }
+
+    /**
+     * Called when several windows have been merged into one window by the {@link
+     * org.apache.flink.streaming.api.windowing.assigners.WindowAssigner}.
+     *
+     * @param window The new window that results from the merge.
+     * @param ctx A context object that can be used to register timer callbacks and access state.
+     */
+    public void onMerge(W window, OnMergeContext ctx) throws Exception {
+        throw new UnsupportedOperationException("This trigger does not support merging.");
+    }
+
+    /**
+     * Clears any state that the trigger might still hold for the given window. This is called when
+     * a window is purged. Timers set using {@link TriggerContext#registerEventTimeTimer(long)} and
+     * {@link TriggerContext#registerProcessingTimeTimer(long)} should be deleted here as well as
+     * state acquired using {@link TriggerContext#getPartitionedState(StateDescriptor)}.
+     */
+    public abstract void clear(W window, TriggerContext ctx) throws Exception;
+
+    // ------------------------------------------------------------------------
+
+    /**
+     * A context object that is given to {@link Trigger} methods to allow them to register timer
+     * callbacks and deal with state.
+     */
+    public interface TriggerContext {
+
+        /** Returns the current processing time. */
+        long getCurrentProcessingTime();
+
+        /**
+         * Returns the metric group for this {@link Trigger}. This is the same metric group that
+         * would be returned from {@link RuntimeContext#getMetricGroup()} in a user function.
+         *
+         * <p>You must not call methods that create metric objects (such as {@link
+         * MetricGroup#counter(int)} multiple times but instead call once and store the metric
+         * object in a field.
+         */
+        MetricGroup getMetricGroup();
+
+        /** Returns the current watermark time. */
+        long getCurrentWatermark();
+
+        /**
+         * Register a system time callback. When the current system time passes the specified time
+         * {@link Trigger#onProcessingTime(long, Window, TriggerContext)} is called with the time
+         * specified here.
+         *
+         * @param time The time at which to invoke {@link Trigger#onProcessingTime(long, Window,
+         *     TriggerContext)}
+         */
+        void registerProcessingTimeTimer(long time);
+
+        /**
+         * Register an event-time callback. When the current watermark passes the specified time
+         * {@link Trigger#onEventTime(long, Window, TriggerContext)} is called with the time
+         * specified here.
+         *
+         * @param time The watermark at which to invoke {@link Trigger#onEventTime(long, Window,
+         *     TriggerContext)}
+         * @see org.apache.flink.streaming.api.watermark.Watermark
+         */
+        void registerEventTimeTimer(long time);
+
+        /** Delete the processing time trigger for the given time. */
+        void deleteProcessingTimeTimer(long time);
+
+        /** Delete the event-time trigger for the given time. */
+        void deleteEventTimeTimer(long time);
+
+        /**
+         * Retrieves a {@link State} object that can be used to interact with fault-tolerant state
+         * that is scoped to the window and key of the current trigger invocation.
+         *
+         * @param stateDescriptor The StateDescriptor that contains the name and type of the state
+         *     that is being accessed.
+         * @param <S> The type of the state.
+         * @return The partitioned state object.
+         * @throws UnsupportedOperationException Thrown, if no partitioned state is available for
+         *     the function (function is not part os a KeyedStream).
+         */
+        <S extends State> S getPartitionedState(StateDescriptor<S, ?> stateDescriptor);
+
+        /**
+         * Retrieves a {@link ValueState} object that can be used to interact with fault-tolerant
+         * state that is scoped to the window and key of the current trigger invocation.
+         *
+         * @param name The name of the key/value state.
+         * @param stateType The class of the type that is stored in the state. Used to generate
+         *     serializers for managed memory and checkpointing.
+         * @param defaultState The default state value, returned when the state is accessed and no
+         *     value has yet been set for the key. May be null.
+         * @param <S> The type of the state.
+         * @return The partitioned state object.
+         * @throws UnsupportedOperationException Thrown, if no partitioned state is available for
+         *     the function (function is not part os a KeyedStream).
+         * @deprecated Use {@link #getPartitionedState(StateDescriptor)}.
+         */
+        @Deprecated
+        <S extends Serializable> ValueState<S> getKeyValueState(
+                String name, Class<S> stateType, S defaultState);
+
+        /**
+         * Retrieves a {@link ValueState} object that can be used to interact with fault-tolerant
+         * state that is scoped to the window and key of the current trigger invocation.
+         *
+         * @param name The name of the key/value state.
+         * @param stateType The type information for the type that is stored in the state. Used to
+         *     create serializers for managed memory and checkpoints.
+         * @param defaultState The default state value, returned when the state is accessed and no
+         *     value has yet been set for the key. May be null.
+         * @param <S> The type of the state.
+         * @return The partitioned state object.
+         * @throws UnsupportedOperationException Thrown, if no partitioned state is available for
+         *     the function (function is not part os a KeyedStream).
+         * @deprecated Use {@link #getPartitionedState(StateDescriptor)}.
+         */
+        @Deprecated
+        <S extends Serializable> ValueState<S> getKeyValueState(
+                String name, TypeInformation<S> stateType, S defaultState);
+    }
+
+    /**
+     * Extension of {@link TriggerContext} that is given to {@link Trigger#onMerge(Window,
+     * OnMergeContext)}.
+     */
+    public interface OnMergeContext extends TriggerContext {
+        <S extends MergingState<?, ?>> void mergePartitionedState(
+                StateDescriptor<S, ?> stateDescriptor);
+    }
+}
+```
+
+`Trigger`类中主要定义了四个抽象方法，和一个上下文接口，对于Flink预定义的`WindowAssigner`都提供了对应的`Trigger`实现。
+
+-   **`onElement()`：窗口中，每到来一条数据都会调用一次该方法，方法返回值将决定窗口的生命周期**
+-   **`onProcessingTime()：在窗口中，每当处理时间定时器到达时，将调用该方法，方法返回值将决定窗口的生命周期`**
+-   **`onEventTime()：在窗口中，每当事件时间定时器到达时，将调用该方法，方法返回值将决定窗口的生命周期`**
+-   **`clear()：当窗口关闭时，将调用该方法，一般用于清理窗口状态`**
+-   **`TriggerContext`接口，是触发器上下文接口，通过该接口可以获取当前的处理时间，水位线等，还可以注册定时器**
+
+`TriggerResult`类，是`onElement()`、`onProcessingTime()`、`onEventTime()`三个方法的返回值类型，其本身是一个枚举类，用于定义窗口的生命周期。
+
+-   **`CONTINUE`：窗口什么都不做**
+-   **`FIRE_AND_PURGE`：调用窗口函数进行数据计算，并向下游发送数据；关闭窗口，并清空窗口**
+-   **`FIRE`：调用窗口函数进行数据计算，并向下游发送数据**
+-   **`PURGE`：仅关闭窗口，并清空窗口的数据，不进行数据计算**
+
+#### 5.2.3.2 移除器
+
+移除器同样是`WindowedStream`的专有属性，用于定义窗口进行数据计算前后，数据移除的逻辑。基于`WindowedStream`调用`evictor()`方法，需要传入一个`Evictor`类型的参数，该参数即为移除器。
+
+`Evictor`是一个接口，其定义如下：
+
+```Java
+public interface Evictor<T, W extends Window> extends Serializable {
+
+    /**
+     * Optionally evicts elements. Called before windowing function.
+     *
+     * @param elements The elements currently in the pane.
+     * @param size The current number of elements in the pane.
+     * @param window The {@link Window}
+     * @param evictorContext The context for the Evictor
+     */
+    void evictBefore(
+            Iterable<TimestampedValue<T>> elements,
+            int size,
+            W window,
+            EvictorContext evictorContext);
+
+    /**
+     * Optionally evicts elements. Called after windowing function.
+     *
+     * @param elements The elements currently in the pane.
+     * @param size The current number of elements in the pane.
+     * @param window The {@link Window}
+     * @param evictorContext The context for the Evictor
+     */
+    void evictAfter(
+            Iterable<TimestampedValue<T>> elements,
+            int size,
+            W window,
+            EvictorContext evictorContext);
+
+    /** A context object that is given to {@link Evictor} methods. */
+    interface EvictorContext {
+
+        /** Returns the current processing time. */
+        long getCurrentProcessingTime();
+
+        /**
+         * Returns the metric group for this {@link Evictor}. This is the same metric group that
+         * would be returned from {@link RuntimeContext#getMetricGroup()} in a user function.
+         *
+         * <p>You must not call methods that create metric objects (such as {@link
+         * MetricGroup#counter(int)} multiple times but instead call once and store the metric
+         * object in a field.
+         */
+        MetricGroup getMetricGroup();
+
+        /** Returns the current watermark time. */
+        long getCurrentWatermark();
+    }
+}
+```
+
+`Evictor`接口中主要定义了两个抽象方法：
+
+-   **`evictBefore`：用于定义在窗口函数调用之前，数据的移除逻辑**
+-   **`evictAfter`：用于定义在窗口函数调用之后，数据的移除逻辑**
+
+#### 5.2.3.3 窗口延迟时间
+
+一般而言，当水位线到达窗口的结束时间时，窗口就将调用窗口函数进行数据计算，并在计算完成后，向下游发送数据，并关闭窗口。为了保证乱序数据存在情况下，窗口计算的正确性，可以适当的调整窗口的等待时间。
+
+当窗口设置了延迟时间后，当水位线到达窗口的结束时间时，窗口会调用一次窗口函数，对窗口已经收集到的数据进行一次计算，并向下游发送计算结果，但不会关闭窗口，此后每一条“迟到”数据到达窗口都将调用一次处理函数，并向下游发送一次最新的计算结果；当水位线到达“窗口结束时间 + 窗口延迟时间”时，窗口就将关闭，此时窗口的所有数据和状态都将被清空，此后的“迟到”数据都将被丢弃。
+
+```java 
+stream.keyBy(...)
+	  .window(...)
+	  .allowedLateness(Time.xxx)
+```
+
+#### 5.2.3.4 侧输出流
+
+到目前为止，Flink对于“迟到”数据的处理，有两种处理方案，一是在设置水位线生成策略时，设置数据的乱序程度，这相当于数据流流速不变，但时间变慢了一定程度；二是在窗口计算时，设置窗口的延迟时间，增加窗口等待数据的时间，这相当于让窗口多等待一会数据。然而，窗口不能一直等待数据，总会存在窗口关闭后才到来的“迟到”数据，为了保证数据计算的准确性，Flink还提供了窗口关闭后“迟到”数据的处理方案。
+
+侧输出流，将迟到的数据收集起来，作为另一条数据流，向下游发送。
+
+使用侧输出流之前，需要为侧输出流定义一个“名称”，该名称将唯一标识侧输出流。随后基于`WindowedStream`调用`sideOutputLateData()`，并传入侧输出流“名称”，便可以将“迟到”数据收集到侧输出流中。最后基于窗口处理完成之后的`DataStream`，再调用`getSideOutput()`方法，并传入侧输出流“名称”，便可以获取侧输出流。
+
+```java
+// 申明侧输出流名称
+OutputTag outputTag = new OutputTag<...>();
+
+// 将迟到数据收集到侧输出流里
+new_stream = stream.keyBy(...)
+                   .window(...)
+                   .sideOutputLateData(outputTag)
+                   .aggregate(...)
+    
+// 获取侧输出流
+DataStream ds = new_stream.getSideOutput(outputTag)
+```
+
+获取到由“迟到”数据构成的侧输出流，需要由开发者手动计算数据所属窗口，并将其手动与原窗口计算结果合并。
+
+# 六、处理函数
