@@ -1903,7 +1903,7 @@ public class C010_ReduceTransformation {
 
 ![RichFunctionDemo](./03-Flink.assets/RichFunctionDemo.png)
 
-相对于一般的算子，富函数版本算子提供了两项极为强大的功能，一是，提供了算子生命周期相关的方法；二是提供了可以获取运行环境的上下文的方法。
+相对于一般的算子，富函数版本算子提供了两项极为强大的功能，一是，提供了算子生命周期相关的方法；二是提供了可以获取运行时环境的上下文的方法。
 
 **`RichFunction`接口的定义：**
 
@@ -3485,3 +3485,400 @@ DataStream ds = new_stream.getSideOutput(outputTag)
 获取到由“迟到”数据构成的侧输出流，需要由开发者手动计算数据所属窗口，并将其手动与原窗口计算结果合并。
 
 # 六、处理函数
+
+Flink核心API对数据流的处理都是具体的，`map`算子用于对数据流进行映射，`filter`算子用于对数据流进行过滤等等。除了这些核心API，Flink还提供了更为底层的API，即处理函数。处理函数不定义任何数据处理的操作，只提炼出一个统一的处理操作的入口，向用户提供数据流中最基本元素：数据元素（event）、运行时上下文（context），运行时上下文能够提供时间（time）、状态（state）。处理函数相当于向用户提供了对数据流的所有信息以及控制权限，用户有了所有的信息以及权限，因此可以做任何的数据处理，实现业务需求。
+
+![image-20230421102224255](./03-Flink.assets/image-20230421102224255.png)
+
+## 6.1、处理函数分类
+
+Flink中已知的数据流类型：
+
+-   **读取数据源获得的数据流：`DataStream`**
+-   **`DataStream`调用`keyBy()`方法后得到的键控流：`KeyedStream`**
+-   **`KeyedStream`调用`window()`方法后得到的窗口数据流：`WindowedStream`**
+-   **`DataStream`调用`WindowAll()`方法后得到的全窗口数据流：`AllWindowedStream`**
+-   **`DataStream`调用`broadcast(final MapStateDescriptor<?, ?>... broadcastStateDescriptors)`方法后得到的广播流：`BroadcastStream`**
+
+后续多流转换中还会有很多其他的数据流。
+
+不同的数据流都可以直接调用`process()`方法，传入处理函数用于对数据进行处理。不同的流调用`process()`方法，传入的处理函数的本质基本相同，但不同的处理函数还是有着一些细微的差别。
+
+Flink提供了8个处理函数，分别对应不同数据流调用`process()`方法需要传入的处理函数。
+
+-   **`ProcessFuntion`：基本处理函数，`DataStream`调用`process()`方法时需要传入的参数类型**
+-   **`KeyedProcessFuntion`：`KeyedStream`调用`process()`方法时需要传入的参数类型**
+-   **`ProcessAllWindowFunction`：`AllWindowedStream`调用`process()`方法时需要传入的参数类型**
+-   **`ProcessWindowFunction`：`WindowedStream`调用`process()`方法时需要传入的参数类型**
+-   **`BroadcastProcessFunction`：**
+-   **`KeyBroadcastProcessFunction`：**
+-   **`CoProcessFunction`：**
+-   **`ProcessJoinFunction`：**
+
+所有的处理函数都是抽象类，都继承自`AbstractRichFunction`，因此处理函数都能够获取运行时上下文对象`RuntimeContext`，都具有生命周期方法`open()`和`close()`。此外各个处理函数都定义抽象内部类`Context`，通过调用方法能够获取定时服务`TimerService`，进而获取当前水位线、时间戳，以及进行定时器的注册和删除。此外，所有的处理函数都能够对数据进行侧输出流输出。
+
+不同的处理函数基本定义都相似，但每个处理函数之间都有着细微的差别。
+
+![AbstractRichFunction](./03-Flink.assets/AbstractRichFunction.png)
+
+## 6.2、ProcessFunction
+
+**`ProcessFunction`的定义**
+
+```Java
+public abstract class ProcessFunction<I, O> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = 1L;
+
+    public abstract void processElement(I value, Context ctx, Collector<O> out) throws Exception;
+
+    public void onTimer(long timestamp, OnTimerContext ctx, Collector<O> out) throws Exception {}
+
+
+    public abstract class Context {
+
+        public abstract Long timestamp();
+
+
+        public abstract TimerService timerService();
+
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+    }
+
+
+    public abstract class OnTimerContext extends Context {
+        public abstract TimeDomain timeDomain();
+    }
+}
+```
+
+`ProcessFunction`类中定义了两种泛型，泛型`I`表示输入数据的类型，泛型`O`表示输出数据的类型。
+
+**内部结构说明：**
+
+-   **`processElement()`：该方法在每个数据元素到来时都将被调用，用于定义数据处理逻辑**
+-   **`onTimer()`：该方法在定时器时间到达时被调用，用于定义定时操作逻辑**
+-   **`class Context`：上下文环境**
+    -   **`timestamp()`：用于获取当前正在被处理的元素的时间戳，或者是触发定时器的时间戳**
+    -   **`timerService()`：用于获取处理函数特有的定时服务**
+    -   **`output()`：用于将数据输出到侧输出流中**
+
+>   **需要注意的是，在Flink中，只有`KeyedStream`才支持设置定时器的操作，所以`ProcessFunction`中即使有定时服务的定义，但也没有办法进行定时操作。**
+
+**演示示例**
+
+```java
+/**
+ * @author shaco
+ * @create 2023-04-21 13:49
+ * @desc 演示示例：ProcessFunction
+ */
+public class C021_ProcessFunction {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流数据执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源，并分配时间戳，设置水位线生成策略
+        SingleOutputStreamOperator<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource())
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(0))
+                                .withTimestampAssigner(
+                                        new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                            @Override
+                                            public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                                return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                            }
+                                        }
+                                )
+                );
+
+        // TODO 3、直接调用process()方法
+        // 定义侧输出流名称和数据类型
+        OutputTag<WebPageAccessEvent> outputTag = new OutputTag<WebPageAccessEvent>("WebPagerAccessEventLate") {
+        };
+
+        SingleOutputStreamOperator<String> out = webPageAccessEventDS.process(
+                new ProcessFunction<WebPageAccessEvent, String>() {
+                    // 生命周期方法
+                    @Override
+                    public void open(Configuration parameters) throws Exception {
+                        System.out.println("生命周期开始");
+                    }
+
+                    @Override
+                    public void close() throws Exception {
+                        System.out.println("生命周期结束");
+                    }
+
+                    @Override
+                    public void processElement(WebPageAccessEvent value, Context ctx, Collector<String> out) throws Exception {
+                        // 获取运行时上下文对象，并调用相应的方法
+                        int numberOfParallelSubtasks = getRuntimeContext().getNumberOfParallelSubtasks();
+                        System.out.println("当前并行子任务的编号是：" + numberOfParallelSubtasks);
+
+                        // 使用上下文对象，
+                        // 1、当前数据元素的时间戳
+                        Long timestamp = ctx.timestamp();
+                        System.out.println("当前数据元素的时间戳：" + timestamp);
+
+                        // 2、获取定时服务，进行定时服务
+                        TimerService timerService = ctx.timerService();
+                        long processTime = timerService.currentProcessingTime();
+                        long currentWatermark = timerService.currentWatermark();
+                        // 下一行代码出错
+                        // timerService.registerProcessingTimeTimer(timestamp + 10 * 1000);
+
+                        // 3、将数据输出到侧输出流
+                        ctx.output(outputTag, value);
+
+                        // 向下游输出数据
+                        out.collect(value.userName);
+                    }
+
+                    // 声明定时器数据执行逻辑
+                    @Override
+                    public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+                        // 定时器执行逻辑
+                        System.out.println("定时器到达：" + timestamp);
+
+                    }
+                }
+        );
+
+        // 获取侧输出流，并打印
+        out.getSideOutput(outputTag).print(">>>>");
+
+        // 获取输出流，并打印
+        out.print("^^^^");
+
+        // TODO 4、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**说明：第60行注册定时器的代码在运行时会报错：`Caused by: java.lang.UnsupportedOperationException: Setting timers is only supported on a keyed streams.`。表明`ProcessFunction`无法使用定时服务，实际上，在Flink中，所有非键控流的处理函数都无法使用定时服务。**
+
+## 6.3、KeyedProcessFunction
+
+**`KeyedProcessFunction`定义**
+
+```Java
+public abstract class KeyedProcessFunction<K, I, O> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = 1L;
+
+    public abstract void processElement(I value, Context ctx, Collector<O> out) throws Exception;
+
+    public void onTimer(long timestamp, OnTimerContext ctx, Collector<O> out) throws Exception {}
+
+    public abstract class Context {
+
+        public abstract Long timestamp();
+
+        public abstract TimerService timerService();
+
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+
+        public abstract K getCurrentKey();
+    }
+
+    public abstract class OnTimerContext extends Context {
+
+        public abstract TimeDomain timeDomain();
+
+        @Override
+        public abstract K getCurrentKey();
+    }
+}
+```
+
+**可以看到，`KeyedProcessFunction`的定义与`ProcessFunction`的定义基本相同，只多了泛型`K`和`getCurrentKey()`方法。但正如上面所说，`KeyedProcessFunction`是能够使用定时服务的。**
+
+**演示示例**
+
+```java
+/**
+ * @author shaco
+ * @create 2023-04-21 14:46
+ * @desc 演示示例，KeyedProcessFunction
+ */
+public class C022_KeyedProcessFunction {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流数据执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源，并分配时间戳，设置水位线生成策略
+        SingleOutputStreamOperator<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource())
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(0))
+                                .withTimestampAssigner(
+                                        new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                            @Override
+                                            public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                                return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                            }
+                                        }
+                                )
+                );
+
+        // TODO 3、直接调用process()方法
+        // 定义侧输出流名称和数据类型
+        OutputTag<WebPageAccessEvent> outputTag = new OutputTag<WebPageAccessEvent>("WebPagerAccessEventLate") {
+        };
+
+        SingleOutputStreamOperator<String> out = webPageAccessEventDS
+                .keyBy(
+                        new KeySelector<WebPageAccessEvent, String>() {
+                            @Override
+                            public String getKey(WebPageAccessEvent value) throws Exception {
+                                return "true";
+                            }
+                        }
+                )
+                .process(
+                        new KeyedProcessFunction<String, WebPageAccessEvent, String>() {
+                            // 声明周期方法
+                            @Override
+                            public void open(Configuration parameters) throws Exception {
+                                System.out.println("生命周期开始");
+                            }
+
+                            @Override
+                            public void close() throws Exception {
+                                System.out.println("生命周期结束");
+                            }
+
+                            @Override
+                            public void processElement(WebPageAccessEvent value, Context ctx, Collector<String> out) throws Exception {
+                                // 获取运行时上下文对象，并调用相应的方法
+                                int numberOfParallelSubtasks = getRuntimeContext().getNumberOfParallelSubtasks();
+                                System.out.println("当前任务并行度：" + numberOfParallelSubtasks);
+
+                                // 使用上下文对象
+                                // 1、获取当前数据元素的key
+                                String currentKey = ctx.getCurrentKey();
+                                System.out.println("当前数据对应的key：" + currentKey);
+                                System.out.println("当前数据的时间戳：" + ctx.timestamp());
+                                // 2、获取时间服务对象
+                                TimerService timerService = ctx.timerService();
+                                long currentProcessingTime = timerService.currentProcessingTime();
+                                long watermark = timerService.currentWatermark();
+                                // 基于事件时间注册一个10s后的定时器
+                                timerService.registerEventTimeTimer(ctx.timestamp() + 10 * 1000);
+
+                                System.out.println("当前处理时间：" + currentProcessingTime);
+                                System.out.println("当前水位线：" + watermark);
+
+                                System.out.println("==========================");
+                            }
+
+                            // 定义定时器数据处理逻辑
+                            @Override
+                            public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+                                System.out.println(" >>>>>>>>>>>>>> 定时器到达，事件时间为：" + timestamp);
+                            }
+                        }
+                );
+
+        // 获取侧输出流，并打印
+        out.getSideOutput(outputTag).print(">>>>");
+
+        // 获取输出流，并打印
+        out.print("^^^^");
+
+        // TODO 4、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**综合应用：统计最近10秒内访问量最高的n个url，每隔5s更新一次计算结果**
+
+```Java
+
+```
+
+## 6.4、ProcessAllWindowFunction
+
+**`ProcessAllWindowFunction`的定义**
+
+```Java
+public abstract class ProcessAllWindowFunction<IN, OUT, W extends Window> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = 1L;
+
+    public abstract void process(Context context, Iterable<IN> elements, Collector<OUT> out) throws Exception;
+
+    public void clear(Context context) throws Exception {}
+
+    public abstract class Context {
+
+        public abstract W window();
+
+        public abstract KeyedStateStore windowState();
+
+        public abstract KeyedStateStore globalState();
+
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+    }
+}
+```
+
+**窗口处理函数与基本处理函数在内部结构方面差别较大，主要区别在于窗口函数没有获取时间服务的方法。**
+
+**内部结构说明**
+
+-   **`process()`：当窗口关闭并触发计算时，调用该方法，用于对窗口收集到的数据进行数据处理**
+-   **`clear()`：当窗口关闭时，调用该方法，用于清理窗口相关状态**
+-   **`Context`：上下文环境**
+    -   **`window()`：获取窗口对象，能够获取窗口相关的元数据信息**
+    -   **`WindowState()`：获取`key`在窗口中的状态**
+    -   **`globalState()`：获取`key`的全局状态**
+    -   **`output()`：侧输出流**
+
+**`ProcessAllWindowFunction`的`Context`内部类中并没有定义获取时间服务`TimerService`的方法，因此`ProcessAllWindowFunction`并不能使用时间服务，但这并不代表`ProcessAllWindowFunction`中没有时间服务。窗口本身就具备时间属性，其定时器在Flink内部已经定义好，即窗口结束时间。如果开发者需要自定义定时器该怎么办呢？可以基于`WindowedStream`调用`trigger()`方法，进行触发器的定义。**
+
+## 6.5、ProcessWindowFunction
+
+**`ProcessWindowFunction`的定义**
+
+```Java
+public abstract class ProcessWindowFunction<IN, OUT, KEY, W extends Window> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = 1L;
+
+    public abstract void process(KEY key, Context context, Iterable<IN> elements, Collector<OUT> out) throws Exception;
+
+    public void clear(Context context) throws Exception {}
+
+    public abstract class Context implements java.io.Serializable {
+
+        public abstract W window();
+
+        public abstract long currentProcessingTime();
+
+        public abstract long currentWatermark();
+
+        public abstract KeyedStateStore windowState();
+
+        public abstract KeyedStateStore globalState();
+
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+    }
+}
+```
+
+**可以看到，`ProcessWindowFunction`的定义与`ProcessAllWindowFunction`几乎完全一样，只多出一个泛型`K`。**
+
+## 6.6 CoProcessFunction
+
+## 6.7 ProcessJoinFunction
+
+## 6.8 BroadcastProcessFunction
+
+## 6.9 KeyedBroadcastProcessFunction
+
+# 七、状态编程
