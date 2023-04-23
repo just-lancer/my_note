@@ -3882,3 +3882,232 @@ public abstract class ProcessWindowFunction<IN, OUT, KEY, W extends Window> exte
 ## 6.9 KeyedBroadcastProcessFunction
 
 # 七、状态编程
+
+在流处理中，数据是连续不断的到来和计算的，每个任务进行计算处理时，可以基于当前数据直接转换得到输出结果；有时又需要依赖已有的数据进行结果的计算，这些数据将由算子的任务进行维护，被称为Flink任务的状态。
+
+Flink任务的状态存储在内存中，相当于时子任务示例上的一个本地变量，能够被任务的业务逻辑访问和修改。但状态又不完全等同于`JVM`的本地变量，大数据场景下，必须使用分布式架构来做扩展，在低延时、高吞吐的基础上还需要保证任务的容错性，由此将带来一些列的问题。
+
+-   状态的访问权限：Flink中，同一个并行子任务中可能会包含不同`key`的数据，这些数据同时访问和更改本地变量，将导致计算结果出错，因此状态不是单纯的本地变量
+-   容错性：状态是保存在内存中，用于数据的高效计算，但只保存在内存中使得数据并不可靠，因此还需要对状态进行持久化保存，以便于状态的故障恢复
+-   状态的扩展性：当任务的并行度进行调整（增大或者减小）时，还需要考虑到状态的重组调整
+
+状态的管理并不是意见容易的事情，因此Flink本身已经预实现了一套完整的状态管理机制，将底层的核心功能全部封装起来，包括状态的高效存储和访问、持久化保存和故障恢复，以及资源调整时，状态的再分配。开发者使用Flink状态编程时，只需要调用相应的API即可方便的使用状态，或者配置状态的容错机制，进行将更多的精力放在业务逻辑上。
+
+## 7.1、状态的分类
+
+Flink状态可以分为两大类，Managed State和Raw State。Managed State由Flink统一管理，状态的存储和访问、故障恢复和重组等问题由Flink实现，开发者只需要调用相应接口使用状态即可；Raw State则是开发者自定义的状态，所有与状态相关的问题都由开发者进行实现。
+
+Managed State又可分为键控状态（Keyed State）和算子状态（Operator State），二者的区别在于状态的作用范围以及状态的类型不同。前者的作用范围为每一个`key`，状态类型有5种；后者的作用范围为并行子任务，状态类型只有3种。
+
+![flink-state-classify](./03-Flink.assets/flink-state-classify-16822326210132.png)
+
+## 7.2、Keyed State
+
+`Keyed State`是并行子任务按照`key`来访问和维护的状态，各状态之间以`key`进行隔离。在底层`Keyed State`类似于一个分布式的`Map`数据结构，所有的状态会根据`key`保存成`key-value`的形式，当一条数据到来时，任务就会自动将状态的访问范围限定为当前`key`，从`Map`结构种读取相应的状态值。
+
+此外，在算子的并行度发生改变时，状态也需要随之进行重组。不同`key`对应的`Keyed State`将进一步组成`Key Group`，每一个`Keyed Group`都将被分配到唯一的一个子任务中，所以`Keyed Group`的数量等于并行子任务的并行度。
+
+**需要注意的是，必须基于`KeyedStream`才能进行状态的访问。状态的访问需通过运行时上下文对象，而运行时上下文对象的获取在富函数中定义，因此凡是实现了`RichFunction`接口的算子都能够进行状态编程。**
+
+**状态编程的基本步骤：**
+
+-   **声明状态描述器`StateDescriptor`，告诉Flink状态的名称和状态存储的数据的数据类型**
+-   **调用`getRuntimeContext()`方法获取运行时上下文对象`RuntimeContext`**
+-   **调用`RuntimeContext`中获取状态的方法，将状态描述器传入，即可得到对应的状态**
+
+**`RuntimeContext`接口的定义：**
+
+```Java
+public interface RuntimeContext {
+
+    // 获取当前作业（job）的id。注意：作业id会发生变化，特别是重启任务后
+    JobID getJobId();
+
+    // 返回当前算子对应的task的id，例如，map之后直接输出，那么id为：Map -> Sink: Print to Std. Out
+    String getTaskName();
+
+    // 返回当前并行子任务的公有组id
+    MetricGroup getMetricGroup();
+
+    // 返回当前task的并行子任务的数量
+    int getNumberOfParallelSubtasks();
+
+    // 返回当前task最大的并行子任务的数量
+    int getMaxNumberOfParallelSubtasks();
+
+    // 返回当前并行子task的索引
+    int getIndexOfThisSubtask();
+
+    // 返回当前并行子任务的尝试次数，默认值为0
+    int getAttemptNumber();
+
+    // 获取task与并行子task拼接而成的字符串，例如，MyTask (3/6)#1，其中，3是当前并行子task索引 + 1；6是当前task的并行子任务的数量；1是当前并行子任务的尝试次数
+    String getTaskNameWithSubtasks();
+
+    // 返回当前正在执行的job的执行配置对象
+    ExecutionConfig getExecutionConfig();
+
+    ClassLoader getUserCodeClassLoader();
+
+    void registerUserCodeClassLoaderReleaseHookIfAbsent(String releaseHookName, Runnable releaseHook);
+
+    // --------------------------------------------------------------------------------------------
+
+    // 添加一个累加器
+    <V, A extends Serializable> void addAccumulator(String name, Accumulator<V, A> accumulator);
+
+    // 从当前本地运行环境中获取已存在的累加器
+    <V, A extends Serializable> Accumulator<V, A> getAccumulator(String name);
+
+    IntCounter getIntCounter(String name);
+
+    LongCounter getLongCounter(String name);
+
+    DoubleCounter getDoubleCounter(String name);
+
+    Histogram getHistogram(String name);
+
+    Set<ExternalResourceInfo> getExternalResourceInfos(String resourceName);
+
+    // --------------------------------------------------------------------------------------------
+
+    boolean hasBroadcastVariable(String name);
+
+    <RT> List<RT> getBroadcastVariable(String name);
+
+    <T, C> C getBroadcastVariableWithInitializer(String name, BroadcastVariableInitializer<T, C> initializer);
+
+    DistributedCache getDistributedCache();
+
+    // ------------------------------------------------------------------------
+    //  Methods for accessing state
+    // ------------------------------------------------------------------------
+
+    <T> ValueState<T> getState(ValueStateDescriptor<T> stateProperties);
+
+    <T> ListState<T> getListState(ListStateDescriptor<T> stateProperties);
+
+    <T> ReducingState<T> getReducingState(ReducingStateDescriptor<T> stateProperties);
+
+    <IN, ACC, OUT> AggregatingState<IN, OUT> getAggregatingState(AggregatingStateDescriptor<IN, ACC, OUT> stateProperties);
+
+    <UK, UV> MapState<UK, UV> getMapState(MapStateDescriptor<UK, UV> stateProperties);
+}
+```
+
+**测试：**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-04-23 16:00
+ * @desc 测试富函数的运行时上下文对象
+ */
+public class Demo04 {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、获取流式执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(4);
+
+        // TODO 2、读取数据源，设置时间戳，设置水位线生成策略，对数据按用户名进行分组
+        KeyedStream<WebPageAccessEvent, String> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource())
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(0))
+                                .withTimestampAssigner(
+                                        new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                            @Override
+                                            public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                                return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                            }
+                                        }
+                                )
+                ).keyBy(
+                        new KeySelector<WebPageAccessEvent, String>() {
+                            @Override
+                            public String getKey(WebPageAccessEvent value) throws Exception {
+                                return value.userName;
+                            }
+                        }
+                );
+
+        // TODO 3、进行运行时上下文对象的测试
+        SingleOutputStreamOperator<String> map = webPageAccessEventDS.map(
+                new RichMapFunction<WebPageAccessEvent, String>() {
+                    @Override
+                    public String map(WebPageAccessEvent value) throws Exception {
+                        // 获取运行时上下文对象
+                        RuntimeContext runtimeContext = getRuntimeContext();
+
+                        // 1、获取当前job的id
+                        JobID jobId = runtimeContext.getJobId();
+                        System.out.println("当前job的id：" + jobId);
+
+                        String taskName = runtimeContext.getTaskName();
+                        System.out.println("当前task的id：" + taskName);
+
+                        MetricGroup metricGroup = runtimeContext.getMetricGroup();
+                        System.out.println("当前并行子任务的公有组id：" + metricGroup);
+
+                        int numberOfParallelSubtasks = runtimeContext.getNumberOfParallelSubtasks();
+                        System.out.println("当前task的并行子任务的数量：" + numberOfParallelSubtasks);
+
+                        int maxNumberOfParallelSubtasks = runtimeContext.getMaxNumberOfParallelSubtasks();
+                        System.out.println("当前task最大的并行子任务的数量：" + maxNumberOfParallelSubtasks);
+
+                        int indexOfThisSubtask = runtimeContext.getIndexOfThisSubtask();
+                        System.out.println("当前并行子task的索引：" + indexOfThisSubtask);
+
+                        int attemptNumber = runtimeContext.getAttemptNumber();
+                        System.out.println("当前并行子task的尝试次数（默认值为0）：" + attemptNumber);
+
+                        System.out.println("============================");
+                        return value.userName;
+                    }
+                }
+        );
+
+        // TODO 4、将输出数据打印控制台
+        map.print("^^^^^^^");
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+**状态描述器的继承结构**
+
+**需要注意的是，在`state`接口中定义了一个方法`clear()`，用于清理状态。**
+
+![StateDescriptor](./03-Flink.assets/StateDescriptor.png)
+
+### 7.2.1 Value State
+
+**`ValueStateDescriptor`定义方式：**
+
+```java
+ValueStateDescriptor<Long> valueStateDesc = new ValueStateDescriptor<>("valueStateDesc", Long.class);
+```
+
+**`ValueState`的定义**
+
+```Java
+public interface ValueState<T> extends State {
+
+    T value() throws IOException;
+
+    void update(T value) throws IOException;
+}
+```
+
+**抽象方法说明：**
+
+-   **`value()`：获取当前状态的值**
+-   **`update(T value)`：根据传入的数据更新状态的值**
+
+**演示示例：**
+
+```
+
+```
+
