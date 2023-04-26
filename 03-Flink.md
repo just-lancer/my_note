@@ -4077,11 +4077,54 @@ public class Demo04 {
 
 **状态描述器的继承结构**
 
-**需要注意的是，在`state`接口中定义了一个方法`clear()`，用于清理状态。**
-
 ![StateDescriptor](./03-Flink.assets/StateDescriptor.png)
 
-### 7.2.1 Value State
+### 7.2.0 State接口
+
+**`State`接口的继承结构：**
+
+![State](03-Flink.assets/State.png)
+
+**==`State`接口==**
+
+**`State`接口的定义：**
+
+```Java
+public interface State {
+
+    void clear();
+}
+```
+
+**`State`接口抽象方法的说明：**
+
+-   **`clear()`：清空当前`key`对应的状态中的值，即置为`null`**
+
+**==`AppendingState`接口==**
+
+**`AppendingState`接口的定义：**
+
+```Java
+public interface AppendingState<IN, OUT> extends State {
+
+    OUT get() throws Exception;
+
+    void add(IN value) throws Exception;
+}
+```
+
+**`AppendingState`接口抽象方法的说明：**
+
+-   **`get()`：获取状态当前的值**
+-   **`add(IN value)`：向当前状态中添加给定的`value`，如果是`ListState`，则向列表中追加；如果是聚合状态，则将当前`value`与状态中的值进行聚合**
+
+**==`MergingState`接口==**
+
+**`MergingState`接口是一个空接口。**
+
+### 7.2.1 ValueState
+
+**`ValueState`接口直接继承自`State`接口**
 
 **`ValueStateDescriptor`定义方式：**
 
@@ -4105,9 +4148,1182 @@ public interface ValueState<T> extends State {
 -   **`value()`：获取当前状态的值**
 -   **`update(T value)`：根据传入的数据更新状态的值**
 
-**演示示例：**
+**==由于`ValueState`继承了`State`接口，因此还可以使用`clear()`方法进行状态重置。==**
+
+**演示示例：统计每个用户的PV数据，从第一条数据到来开始，每隔10s输出一次结果**
+
+```java
+/**
+ * @author shaco
+ * @create 2023-04-24 10:47
+ * @desc 演示示例，值状态，需求：统计每个用户的PV数据，从第一条数据到来开始，每隔10s输出一次结果
+ */
+public class C024_ValueState {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流数据处理环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源，设置时间戳，设置水位线生成策略，对数据按用户进行分组
+        KeyedStream<WebPageAccessEvent, String> inputDS = env.addSource(new WebPageAccessEventSource())
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(0))
+                                .withTimestampAssigner(
+                                        new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                            @Override
+                                            public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                                return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                            }
+                                        }
+                                )
+                ).keyBy(
+                        new KeySelector<WebPageAccessEvent, String>() {
+                            @Override
+                            public String getKey(WebPageAccessEvent value) throws Exception {
+                                return value.userName;
+                            }
+                        }
+                );
+
+        // TODO 3、对数据进行逻辑处理
+        SingleOutputStreamOperator<String> outDS = inputDS.process(
+                new KeyedProcessFunction<String, WebPageAccessEvent, String>() {
+                    // 注册一个值状态，用于存储数据到来时的时间戳，用于注册定时器
+                    ValueState<Long> timerValueState;
+                    // 注册一个值状态，用于存储来了多少个数据
+                    ValueState<Long> countValueState;
+
+                    @Override
+                    public void open(Configuration parameters) throws Exception {
+                        // 初始化状态
+                        timerValueState = getRuntimeContext().getState(new ValueStateDescriptor<Long>("timerValueStateDescriptor", Long.class));
+                        countValueState = getRuntimeContext().getState(new ValueStateDescriptor<Long>("countValueStateDescriptor", Long.class));
+                    }
+
+                    @Override
+                    public void processElement(WebPageAccessEvent value, Context ctx, Collector<String> out) throws Exception {
+                        // 当数据到达时，判断countValueState是否为null，为null，表明当前到达的数据是第一条数据
+                        countValueState.update(countValueState.value() == null ? 1 : countValueState.value() + 1);
+                        // 当数据到达时，判断timerValueState是否为null，为null，表明此时没有定时器，需要进行定时器注册
+                        if (timerValueState.value() == null) {
+                            ctx.timerService().registerEventTimeTimer(CustomerTimeUtils.stringToTimestamp(value.accessTime, "yyyy-MM-dd hh:mm:ss") + 10 * 1000);
+                        }
+                    }
+
+                    @Override
+                    public void onTimer(long timestamp, OnTimerContext ctx, Collector<String> out) throws Exception {
+                        // 定时器触发，输出每个用户的PV数据
+                        out.collect(ctx.getCurrentKey() + " / " + CustomerTimeUtils.timeStampToString(timestamp, "yyyy-MM-dd hh:mm:ss") + " / " + countValueState.value());
+
+                        // 清理当前key的timerValueState状态，以便于下条数据到来时创建定时器
+                        timerValueState.clear();
+                    }
+                }
+        );
+
+        // TODO 4、将输出结果打印到控制台
+        inputDS.print(">>>>");
+        outDS.print();
+
+        // TODO 5、执行流数据处理
+        env.execute();
+    }
+}
+```
+
+### 7.2.2 ListState
+
+**`ListStateDescriptor`定义方式：**
+
+```Java
+ListStateDescriptor<Long> valueListStateDescriptor = new ListStateDescriptor<Long>("listStateName", Long.class);
+```
+
+**`ListState`接口的继承结构：**
+
+![ListState](./03-Flink.assets/ListState.png)
+
+**`ListState`接口的定义：**
+
+```Java
+public interface ListState<T> extends MergingState<T, Iterable<T>> {
+
+    void update(List<T> values) throws Exception;
+
+    void addAll(List<T> values) throws Exception;
+}
+```
+
+**`ListState`接口的抽象方法说明：**
+
+-   **`update(List<T> values)`：使用给定的`List`覆盖`ListState`中原有的`List`**
+-   **`addAll(List<T> values)`：将给定`List`中的所有元素逐个追加到`ListState`中**
+
+**==由于`ListState`接口继承了`AppendingState`接口，所以还可以使用`get()`方法和`add(IN value)`方法==**
+
+**==由于`ListState`接口还继承了`State`接口，所以还可以使用`clear()`方法==**
+
+**演示示例：使用`ListState`实现两条流的全外连接**
+
+```Java
 
 ```
 
+### 7.2.3 MapState
+
+**`MapState`接口直接继承自`State`接口**
+
+**`MapState`接口的定义：**
+
+```Java
+public interface MapState<UK, UV> extends State {
+
+    UV get(UK key) throws Exception;
+
+    void put(UK key, UV value) throws Exception;
+
+    void putAll(Map<UK, UV> map) throws Exception;
+
+    void remove(UK key) throws Exception;
+
+    boolean contains(UK key) throws Exception;
+
+    Iterable<Map.Entry<UK, UV>> entries() throws Exception;
+
+    Iterable<UK> keys() throws Exception;
+
+    Iterable<UV> values() throws Exception;
+
+    Iterator<Map.Entry<UK, UV>> iterator() throws Exception;
+
+    boolean isEmpty() throws Exception;
+}
 ```
 
+**`MapState`接口的抽象方法说明：**
+
+**泛型`UK`和`UV`分别表示`Map`数据结构的`key`和`value`的类型**
+
+-   **`uv get(UK key)`：查询给定`key`所对应的`value`**
+-   **`void put(UK key, UV value)`：更新指定`key`的`value`值，如果给定的`key`不存在，那么将给定的`key-value`添加到状态中**
+-   **`void putAll(Map<UK,UV> map)`：将给定的`Map`中的所有`key-value`逐一添加到状态中**
+-   **`void remove(UK key)`：删除指定`key`的`key-value`**
+-   **`boolean contains(UK key)`：判断状态中是否存在给定`key`的`key-value`**
+-   **`Iterable<Map.Entry<UK, UV>> entries()`：返回状态中所有`key-value`构成的`Entry`**
+-   **`Iterable<UK> keys()`：返回状态中所有`key`构成的可迭代对象，`Iterable<UK>`**
+-   **`Iterable<UV> values()`：返回状态中所有`value`构成的可迭代对象，`Iterable<UV>`**
+-   **`Iterator<Map.Entry<UK, UV>> iterator()`：返回状态中所有`key-value`构成的可迭代对象，`Iterable<Map.Entry<UK,UV>>`**
+-   **`boolean isEmpty()`：判断状态是否为空**
+
+**==由于`MapState`直接继承自`State`，所以还可以使用`clear()`方法==**
+
+**演示示例：使用`MapState`实现滑动窗口**
+
+```Java
+/**
+ * @author shaco
+ * @create 2023-04-24 13:38
+ * @desc 演示示例，Map状态，需求：实现滑动窗口，统计每个窗口中用户的访问次数
+ */
+public class C026_MapState {
+    public static void main(String[] args) throws Exception {
+        // TODO 1、创建流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        // TODO 2、读取数据源，设置时间戳，设置水位线生成策略，对数据按用户名分组
+        KeyedStream<WebPageAccessEvent, String> inputDS = env.addSource(new WebPageAccessEventSource())
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy.<WebPageAccessEvent>forBoundedOutOfOrderness(Duration.ofSeconds(0))
+                                .withTimestampAssigner(
+                                        new SerializableTimestampAssigner<WebPageAccessEvent>() {
+                                            @Override
+                                            public long extractTimestamp(WebPageAccessEvent element, long recordTimestamp) {
+                                                return CustomerTimeUtils.stringToTimestamp(element.accessTime, "yyyy-MM-dd hh:mm:ss");
+                                            }
+                                        }
+                                )
+                ).keyBy(
+                        new KeySelector<WebPageAccessEvent, String>() {
+                            @Override
+                            public String getKey(WebPageAccessEvent value) throws Exception {
+                                return value.userName;
+                            }
+                        }
+                );
+
+        // TODO 3、业务逻辑的实现
+        inputDS.process(new MyProcessFunction(5L * 1000, 5L * 1000))
+                .print(">>>>");
+
+        // TODO 4执行流数据处理
+        inputDS.print("^^^^");
+        env.execute();
+    }
+
+    private static class MyProcessFunction extends KeyedProcessFunction<String, WebPageAccessEvent, ArrayList<WebPageAccessEvent>> {
+        private Long windowSize; // 单位：毫秒
+        private Long windowStep; // 单位：毫秒
+
+        public MyProcessFunction(Long windowSize, Long windowStep) {
+            this.windowSize = windowSize;
+            this.windowStep = windowStep;
+        }
+
+        // 声明Map状态，一个key可能有多个窗口
+        MapState<Long, ArrayList<WebPageAccessEvent>> webEventMapState;
+
+        @Override
+        public void open(Configuration parameters) throws Exception {
+            // 初始化Map状态，key表示窗口，取值为窗口的开始时间；value表示分配到该窗口的数据构成的集合
+            webEventMapState = getRuntimeContext().getMapState(
+                    new MapStateDescriptor<Long, ArrayList<WebPageAccessEvent>>(
+                            "name",
+                            TypeInformation.of(long.class),
+                            TypeInformation.of(
+                                    new TypeHint<ArrayList<WebPageAccessEvent>>() {
+                                    }
+                            )
+                    )
+            );
+        }
+
+        @Override
+        public void processElement(WebPageAccessEvent value, Context ctx, Collector<ArrayList<WebPageAccessEvent>> out) throws Exception {
+            // 当每条数据到来时，都需要确定该条数据属于哪个窗口
+            // 因为是滑动窗口，所以情况有好几种
+            Long windowStart;
+            Long windowEnd;
+            ArrayList<Tuple2<Long, Long>> windows = new ArrayList<>(); // 创建一个数组，用于存储一条数据属于哪些窗口
+
+            // 1、size <= step时，会存在数据丢失的情况，并且数据只会存在一个窗口之中
+            if (windowSize <= windowStep) {
+                windowStart = CustomerTimeUtils.stringToTimestamp(value.accessTime, "yyyy-MM-dd hh:mm:ss") / windowStep * windowStep;
+                windowEnd = windowStart + windowSize;
+                if (CustomerTimeUtils.stringToTimestamp(value.accessTime, "yyyy-MM-dd hh:mm:ss") >= windowStart && CustomerTimeUtils.stringToTimestamp(value.accessTime, "yyyy-MM-dd hh:mm:ss") < windowEnd) {
+                    // 如果数据的时间戳大于等于计算出来的窗口的开始时间并且小于窗口的结束时间，那么该数据就会被窗口收纳；否则，不会，也就是窗口步长大于窗口大小时会出现的情况
+                    windows.add(Tuple2.of(windowStart, windowEnd));
+                }
+            } else { // size > step时，同一条数据会存在多条数据中
+                Long lastWindowStart = CustomerTimeUtils.stringToTimestamp(value.accessTime, "yyyy-MM-dd hh:mm:ss") / windowStep * windowStep; // 数据所属最后一个窗口的开始时间
+                for (Long everyWindowStartTime = lastWindowStart; everyWindowStartTime >= 0; everyWindowStartTime = everyWindowStartTime - windowStep) {
+                    // 还得做判断，判断数据时间戳与窗口的左闭右开
+                    Long everyWindowEndTime = everyWindowStartTime + windowSize;
+                    if (CustomerTimeUtils.stringToTimestamp(value.accessTime, "yyyy-MM-dd hh:mm:ss") >= everyWindowStartTime && CustomerTimeUtils.stringToTimestamp(value.accessTime, "yyyy-MM-dd hh:mm:ss") < everyWindowEndTime) {
+                        windows.add(Tuple2.of(everyWindowStartTime, everyWindowEndTime));
+                    }
+                }
+            }
+
+            // 现在进行开窗和定时器设置
+            for (Tuple2<Long, Long> element : windows) {
+                // 判断当前数据是不是当前窗口的第一条数据
+                if (webEventMapState.get(element.f0) == null) {
+                    // 是，将当前数据添加到Map状态中，并注册定时器
+                    ArrayList<WebPageAccessEvent> webPageAccessEvents = new ArrayList<>();
+                    webPageAccessEvents.add(value);
+                    webEventMapState.put(element.f0, webPageAccessEvents);
+
+                    ctx.timerService().registerEventTimeTimer(element.f0 + windowSize - 1);
+                    System.out.println("定时器时间：" + (element.f0 + windowSize - 1));
+                } else {
+                    // 不是，将当前数据添加到Map状态中
+                    ArrayList<WebPageAccessEvent> webPageAccessEvents = webEventMapState.get(element.f0);
+                    webPageAccessEvents.add(value);
+                    webEventMapState.put(element.f0, webPageAccessEvents);
+                }
+            }
+        }
+
+        // 定时器到达
+        @Override
+        public void onTimer(long timestamp, OnTimerContext ctx, Collector<ArrayList<WebPageAccessEvent>> out) throws Exception {
+            // 将状态中的数据发送到下游
+            out.collect(webEventMapState.get(timestamp - windowSize + 1));
+
+            System.out.println("清理定时器：" + (timestamp - windowSize));
+
+            // 清理指定的窗口
+            webEventMapState.remove(timestamp - windowSize + 1);
+        }
+    }
+}
+```
+
+### 7.2.4 AggregatingState
+
+![AggregatingState](./03-Flink.assets/AggregatingState.png)
+
+**`AggregatingState`接口是一个空接口，所以其能够使用的方法是其父接口中的方法，因此，只能调用`AppendingState`接口中的`get()`方法和`add()`方法。**
+
+### 7.2.5 状态生存时间
+
+在实际应用中， 很多状态会随着时间推移主键增长，如果不加以限制，最终将导致内存空间耗尽。一个常见的优化思路是直接在Flink代码中调用`clear()`方法清理掉状态。但是，有时候业务需求要求代码逻辑不能直接删除状态，为了应对这种场景，Flink为状态添加了一个属性`time-to-live,TTL`，即状态的生存时间，当状态在内存中的非活跃时间超过了状态的生存时间，那么该状态就会被打上已失效的标签。
+
+在实际的处理过程中，在状态创建的时候，状态的失效时间 =  当前时间 + 状态生存时间，之后如果有对状态的访问和修改，那么可以再对失效时间进行更新。当设置的状态清除条件被触发时，就可以判断状态是否失效，从而进行状态的清除。
+
+状态的生存时间是状态的属性之一，利用`StateDescriptor`调用`enableTimeToLive()`方法，传入状态生存时间配置对象`StateTtlConfig`，通过`StateTtlConfig`能够对状态生存时间的相关属性进行配置。
+
+**`StateTtlConfig`类的定义：**
+
+```java
+public class StateTtlConfig implements Serializable {
+
+    private static final long serialVersionUID = -7592693245044289793L;
+
+    public static final StateTtlConfig DISABLED =
+            newBuilder(Time.milliseconds(Long.MAX_VALUE))
+                    .setUpdateType(UpdateType.Disabled)
+                    .build();
+
+    /**
+     * This option value configures when to update last access timestamp which prolongs state TTL.
+     */
+    public enum UpdateType {
+        /** TTL is disabled. State does not expire. */
+        Disabled,
+        /**
+         * Last access timestamp is initialised when state is created and updated on every write
+         * operation.
+         */
+        OnCreateAndWrite,
+        /** The same as <code>OnCreateAndWrite</code> but also updated on read. */
+        OnReadAndWrite
+    }
+
+    /** This option configures whether expired user value can be returned or not. */
+    public enum StateVisibility {
+        /** Return expired user value if it is not cleaned up yet. */
+        ReturnExpiredIfNotCleanedUp,
+        /** Never return expired user value. */
+        NeverReturnExpired
+    }
+
+    /** This option configures time scale to use for ttl. */
+    public enum TtlTimeCharacteristic {
+        /**
+         * Processing time, see also <code>
+         * org.apache.flink.streaming.api.TimeCharacteristic.ProcessingTime</code>.
+         */
+        ProcessingTime
+    }
+
+    private final UpdateType updateType;
+    private final StateVisibility stateVisibility;
+    private final TtlTimeCharacteristic ttlTimeCharacteristic;
+    private final Time ttl;
+    private final CleanupStrategies cleanupStrategies;
+
+    private StateTtlConfig(
+            UpdateType updateType,
+            StateVisibility stateVisibility,
+            TtlTimeCharacteristic ttlTimeCharacteristic,
+            Time ttl,
+            CleanupStrategies cleanupStrategies) {
+        this.updateType = checkNotNull(updateType);
+        this.stateVisibility = checkNotNull(stateVisibility);
+        this.ttlTimeCharacteristic = checkNotNull(ttlTimeCharacteristic);
+        this.ttl = checkNotNull(ttl);
+        this.cleanupStrategies = cleanupStrategies;
+        checkArgument(ttl.toMilliseconds() > 0, "TTL is expected to be positive.");
+    }
+
+    @Nonnull
+    public UpdateType getUpdateType() {
+        return updateType;
+    }
+
+    @Nonnull
+    public StateVisibility getStateVisibility() {
+        return stateVisibility;
+    }
+
+    @Nonnull
+    public Time getTtl() {
+        return ttl;
+    }
+
+    @Nonnull
+    public TtlTimeCharacteristic getTtlTimeCharacteristic() {
+        return ttlTimeCharacteristic;
+    }
+
+    public boolean isEnabled() {
+        return updateType != UpdateType.Disabled;
+    }
+
+    @Nonnull
+    public CleanupStrategies getCleanupStrategies() {
+        return cleanupStrategies;
+    }
+
+    @Override
+    public String toString() {
+        return "StateTtlConfig{"
+                + "updateType="
+                + updateType
+                + ", stateVisibility="
+                + stateVisibility
+                + ", ttlTimeCharacteristic="
+                + ttlTimeCharacteristic
+                + ", ttl="
+                + ttl
+                + '}';
+    }
+
+    @Nonnull
+    public static Builder newBuilder(@Nonnull Time ttl) {
+        return new Builder(ttl);
+    }
+
+    /** Builder for the {@link StateTtlConfig}. */
+    public static class Builder {
+
+        private UpdateType updateType = OnCreateAndWrite;
+        private StateVisibility stateVisibility = NeverReturnExpired;
+        private TtlTimeCharacteristic ttlTimeCharacteristic = ProcessingTime;
+        private Time ttl;
+        private boolean isCleanupInBackground = true;
+        private final EnumMap<CleanupStrategies.Strategies, CleanupStrategies.CleanupStrategy>
+                strategies = new EnumMap<>(CleanupStrategies.Strategies.class);
+
+        public Builder(@Nonnull Time ttl) {
+            this.ttl = ttl;
+        }
+
+        /**
+         * Sets the ttl update type.
+         *
+         * @param updateType The ttl update type configures when to update last access timestamp
+         *     which prolongs state TTL.
+         */
+        @Nonnull
+        public Builder setUpdateType(UpdateType updateType) {
+            this.updateType = updateType;
+            return this;
+        }
+
+        @Nonnull
+        public Builder updateTtlOnCreateAndWrite() {
+            return setUpdateType(UpdateType.OnCreateAndWrite);
+        }
+
+        @Nonnull
+        public Builder updateTtlOnReadAndWrite() {
+            return setUpdateType(UpdateType.OnReadAndWrite);
+        }
+
+        /**
+         * Sets the state visibility.
+         *
+         * @param stateVisibility The state visibility configures whether expired user value can be
+         *     returned or not.
+         */
+        @Nonnull
+        public Builder setStateVisibility(@Nonnull StateVisibility stateVisibility) {
+            this.stateVisibility = stateVisibility;
+            return this;
+        }
+
+        @Nonnull
+        public Builder returnExpiredIfNotCleanedUp() {
+            return setStateVisibility(StateVisibility.ReturnExpiredIfNotCleanedUp);
+        }
+
+        @Nonnull
+        public Builder neverReturnExpired() {
+            return setStateVisibility(StateVisibility.NeverReturnExpired);
+        }
+
+        /**
+         * Sets the time characteristic.
+         *
+         * @param ttlTimeCharacteristic The time characteristic configures time scale to use for
+         *     ttl.
+         */
+        @Nonnull
+        public Builder setTtlTimeCharacteristic(
+                @Nonnull TtlTimeCharacteristic ttlTimeCharacteristic) {
+            this.ttlTimeCharacteristic = ttlTimeCharacteristic;
+            return this;
+        }
+
+        @Nonnull
+        public Builder useProcessingTime() {
+            return setTtlTimeCharacteristic(ProcessingTime);
+        }
+
+        /** Cleanup expired state in full snapshot on checkpoint. */
+        @Nonnull
+        public Builder cleanupFullSnapshot() {
+            strategies.put(CleanupStrategies.Strategies.FULL_STATE_SCAN_SNAPSHOT, EMPTY_STRATEGY);
+            return this;
+        }
+
+        /**
+         * Cleanup expired state incrementally cleanup local state.
+         *
+         * <p>Upon every state access this cleanup strategy checks a bunch of state keys for
+         * expiration and cleans up expired ones. It keeps a lazy iterator through all keys with
+         * relaxed consistency if backend supports it. This way all keys should be regularly checked
+         * and cleaned eventually over time if any state is constantly being accessed.
+         *
+         * <p>Additionally to the incremental cleanup upon state access, it can also run per every
+         * record. Caution: if there are a lot of registered states using this option, they all will
+         * be iterated for every record to check if there is something to cleanup.
+         *
+         * <p>Note: if no access happens to this state or no records are processed in case of {@code
+         * runCleanupForEveryRecord}, expired state will persist.
+         *
+         * <p>Note: Time spent for the incremental cleanup increases record processing latency.
+         *
+         * <p>Note: At the moment incremental cleanup is implemented only for Heap state backend.
+         * Setting it for RocksDB will have no effect.
+         *
+         * <p>Note: If heap state backend is used with synchronous snapshotting, the global iterator
+         * keeps a copy of all keys while iterating because of its specific implementation which
+         * does not support concurrent modifications. Enabling of this feature will increase memory
+         * consumption then. Asynchronous snapshotting does not have this problem.
+         *
+         * @param cleanupSize max number of keys pulled from queue for clean up upon state touch for
+         *     any key
+         * @param runCleanupForEveryRecord run incremental cleanup per each processed record
+         */
+        @Nonnull
+        public Builder cleanupIncrementally(
+                @Nonnegative int cleanupSize, boolean runCleanupForEveryRecord) {
+            strategies.put(
+                    CleanupStrategies.Strategies.INCREMENTAL_CLEANUP,
+                    new IncrementalCleanupStrategy(cleanupSize, runCleanupForEveryRecord));
+            return this;
+        }
+
+        /**
+         * Cleanup expired state while Rocksdb compaction is running.
+         *
+         * <p>RocksDB compaction filter will query current timestamp, used to check expiration, from
+         * Flink every time after processing {@code queryTimeAfterNumEntries} number of state
+         * entries. Updating the timestamp more often can improve cleanup speed but it decreases
+         * compaction performance because it uses JNI call from native code.
+         *
+         * @param queryTimeAfterNumEntries number of state entries to process by compaction filter
+         *     before updating current timestamp
+         */
+        @Nonnull
+        public Builder cleanupInRocksdbCompactFilter(long queryTimeAfterNumEntries) {
+            strategies.put(
+                    CleanupStrategies.Strategies.ROCKSDB_COMPACTION_FILTER,
+                    new RocksdbCompactFilterCleanupStrategy(queryTimeAfterNumEntries));
+            return this;
+        }
+
+        /**
+         * Disable default cleanup of expired state in background (enabled by default).
+         *
+         * <p>If some specific cleanup is configured, e.g. {@link #cleanupIncrementally(int,
+         * boolean)} or {@link #cleanupInRocksdbCompactFilter(long)}, this setting does not disable
+         * it.
+         */
+        @Nonnull
+        public Builder disableCleanupInBackground() {
+            isCleanupInBackground = false;
+            return this;
+        }
+
+        /**
+         * Sets the ttl time.
+         *
+         * @param ttl The ttl time.
+         */
+        @Nonnull
+        public Builder setTtl(@Nonnull Time ttl) {
+            this.ttl = ttl;
+            return this;
+        }
+
+        @Nonnull
+        public StateTtlConfig build() {
+            return new StateTtlConfig(
+                    updateType,
+                    stateVisibility,
+                    ttlTimeCharacteristic,
+                    ttl,
+                    new CleanupStrategies(strategies, isCleanupInBackground));
+        }
+    }
+
+    ......
+}
+```
+
+**使用示例：`StateTtlConfig`类使用了建造者设计模式**
+
+```Java
+StateTtlConfig stateTtlConfig = StateTtlConfig.newBuilder(Time.hours(1))
+                .setUpdateType(StateTtlConfig.UpdateType.OnReadAndWrite) // 设置状态生存时间更新策略，此设置为：创建、读、写状态都修改状态的生存时间
+                .setStateVisibility(StateTtlConfig.StateVisibility.ReturnExpiredIfNotCleanedUp) // 设置状态的可见性，次设置为：如果访问失效状态，当状态未被清理，那么返回状态
+                .setTtlTimeCharacteristic(StateTtlConfig.TtlTimeCharacteristic.ProcessingTime) // 设置状态的时间语义，目前flink只支持处理时间语义
+                .build();
+ValueState<Long> longValueState = getRuntimeContext.getValueState(new ValueStateDescriptor<Long>("stateName", Long.class)
+                .enableTimeToLive(stateTtlConfig));
+```
+
+**==需要注意的是，所有集合类型的状态，例如，`ListState`，`MapState`，在设置`TTL`时，都是针对每一项元素的，也就是说，`ListState`中的每一个元素，都有自己的失效时间，当元素失效时，只会清理自身，不会对状态中的其他元素造成影响。==**
+
+## 7.3 Flink类型系统中的类
+
+`JVM`运行时会有泛型擦除，Flink无法准确地获取到数据类型，因此，在使用`Java API`的时候，需要手动指定类型，在使用`Scala API`时无需指定。
+
+### 7.3.1 TypeInformation
+
+`TypeInformation`是Flink类型系统的核心，是生成序列化和反序列化工具`Comparator`的工具类。同时还是连接`schema`和编程语言内部类型系统的桥梁。
+
+**`TypeInformation`的定义：**
+
+```Java
+public abstract class TypeInformation<T> implements Serializable {
+
+    private static final long serialVersionUID = -7742311969684489493L;
+
+    @PublicEvolving
+    public abstract boolean isBasicType();
+
+    @PublicEvolving
+    public abstract boolean isTupleType();
+
+    @PublicEvolving
+    public abstract int getArity();
+
+    @PublicEvolving
+    public abstract int getTotalFields();
+
+    @PublicEvolving
+    public abstract Class<T> getTypeClass();
+
+    @PublicEvolving
+    public Map<String, TypeInformation<?>> getGenericParameters() {
+        // return an empty map as the default implementation
+        return Collections.emptyMap();
+    }
+
+    @PublicEvolving
+    public abstract boolean isKeyType();
+
+    @PublicEvolving
+    public boolean isSortKeyType() {
+        return isKeyType();
+    }
+
+    @PublicEvolving
+    public abstract TypeSerializer<T> createSerializer(ExecutionConfig config);
+
+    @Override
+    public abstract String toString();
+
+    @Override
+    public abstract boolean equals(Object obj);
+
+    @Override
+    public abstract int hashCode();
+
+    public abstract boolean canEqual(Object obj);
+
+    // ------------------------------------------------------------------------
+
+    /**
+     * Creates a TypeInformation for the type described by the given class.
+     *
+     * <p>This method only works for non-generic types. For generic types, use the {@link
+     * #of(TypeHint)} method.
+     *
+     * @param typeClass The class of the type.
+     * @param <T> The generic type.
+     * @return The TypeInformation object for the type described by the hint.
+     */
+    public static <T> TypeInformation<T> of(Class<T> typeClass) {
+        try {
+            return TypeExtractor.createTypeInfo(typeClass);
+        } catch (InvalidTypesException e) {
+            throw new FlinkRuntimeException(
+                    "Cannot extract TypeInformation from Class alone, because generic parameters are missing. "
+                            + "Please use TypeInformation.of(TypeHint) instead, or another equivalent method in the API that "
+                            + "accepts a TypeHint instead of a Class. "
+                            + "For example for a Tuple2<Long, String> pass a 'new TypeHint<Tuple2<Long, String>>(){}'.");
+        }
+    }
+
+    /**
+     * Creates a TypeInformation for a generic type via a utility "type hint". This method can be
+     * used as follows:
+     *
+     * <pre>{@code
+     * TypeInformation<Tuple2<String, Long>> info = TypeInformation.of(new TypeHint<Tuple2<String, Long>>(){});
+     * }</pre>
+     *
+     * @param typeHint The hint for the generic type.
+     * @param <T> The generic type.
+     * @return The TypeInformation object for the type described by the hint.
+     */
+    public static <T> TypeInformation<T> of(TypeHint<T> typeHint) {
+        return typeHint.getTypeInfo();
+    }
+}
+```
+
+`TypeInformation`类是一个抽象类，在其内部除了定义了一系列的抽象方法，还定义了两个用于获取`TypeInformation`类实例化对象的静态方法。
+
+-   **`public static <T> TypeInformation<T> of(Class<T> typeClass)`：从`Class`中创建**
+-   **`public static <T> TypeInformation<T> of(TypeHint<T> typeHint)`：从`TypeHint`中创建**
+
+**==以上两种方法无法获取带泛型的类型==**
+
+**使用举例：将`Java`数据类型申明为Flink能够识别的`TypeInformation`**
+
+```Java
+TypeInformation<String> stringTypeInfo = TypeInformation.of(String.class);
+TypeInformation<WebPageAccessEvent> of = TypeInformation.of(new TypeHint<WebPageAccessEvent>() {});
+```
+
+
+
+### 7.3.2 TypeHint
+
+由于泛型类型在运行是会被`JVM`擦除掉，所以无法通过`TypeInformation`的`of()`方法指定带有泛型的类型。
+
+为了支持泛型类型，Flink引入了`TypeHint`。
+
+**`TypeHint`类的定义：**
+
+```Java
+public abstract class TypeHint<T> {
+
+    /** The type information described by the hint. */
+    private final TypeInformation<T> typeInfo;
+
+    /** Creates a hint for the generic type in the class signature. */
+    public TypeHint() {
+        try {
+            this.typeInfo = TypeExtractor.createTypeInfo(this, TypeHint.class, getClass(), 0);
+        } catch (InvalidTypesException e) {
+            throw new FlinkRuntimeException(
+                    "The TypeHint is using a generic variable."
+                            + "This is not supported, generic types must be fully specified for the TypeHint.");
+        }
+    }
+
+    // ------------------------------------------------------------------------
+
+    /**
+     * Gets the type information described by this TypeHint.
+     *
+     * @return The type information described by this TypeHint.
+     */
+    public TypeInformation<T> getTypeInfo() {
+        return typeInfo;
+    }
+
+    // ------------------------------------------------------------------------
+
+    @Override
+    public int hashCode() {
+        return typeInfo.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return obj == this
+                || obj instanceof TypeHint && this.typeInfo.equals(((TypeHint<?>) obj).typeInfo);
+    }
+
+    @Override
+    public String toString() {
+        return "TypeHint: " + typeInfo;
+    }
+}
+```
+
+**可以看到`TypeHint`是一个带泛型的抽象类，泛型`T`即是需要声明的带泛型的类型。**
+
+**使用举例：将带泛型的`Java`数据类型声明为Flink能够识别的`TypeInformation`**
+
+```Java
+ArrayList<WebPageAccessEvent> arr = new ArrayList<>();
+TypeInformation<WebPageAccessEvent> arrInfo1 = TypeInformation.of(new TypeHint<WebPageAccessEvent>() {});
+TypeInformation<WebPageAccessEvent> arrInfo2 = new TypeHint<WebPageAccessEvent>() {}.getTypeInfo();
+```
+
+### 7.3.3 Types
+
+在Flink中经常使用的类型已经预定义在`Types`中。
+
+**`Types`类的定义：**
+
+```Java
+public class Types {
+
+    /** Returns type information for {@link java.lang.Void}. Does not support a null value. */
+    public static final TypeInformation<Void> VOID = BasicTypeInfo.VOID_TYPE_INFO;
+
+    /** Returns type information for {@link java.lang.String}. Supports a null value. */
+    public static final TypeInformation<String> STRING = BasicTypeInfo.STRING_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>byte</code> and {@link java.lang.Byte}.
+     * Does not support a null value.
+     */
+    public static final TypeInformation<Byte> BYTE = BasicTypeInfo.BYTE_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>boolean</code> and {@link java.lang.Boolean}. Does not support a null value.
+     */
+    public static final TypeInformation<Boolean> BOOLEAN = BasicTypeInfo.BOOLEAN_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>short</code> and {@link java.lang.Short}.
+     * Does not support a null value.
+     */
+    public static final TypeInformation<Short> SHORT = BasicTypeInfo.SHORT_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>int</code> and {@link java.lang.Integer}.
+     * Does not support a null value.
+     */
+    public static final TypeInformation<Integer> INT = BasicTypeInfo.INT_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>long</code> and {@link java.lang.Long}.
+     * Does not support a null value.
+     */
+    public static final TypeInformation<Long> LONG = BasicTypeInfo.LONG_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>float</code> and {@link java.lang.Float}.
+     * Does not support a null value.
+     */
+    public static final TypeInformation<Float> FLOAT = BasicTypeInfo.FLOAT_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>double</code> and {@link java.lang.Double}. Does not support a null value.
+     */
+    public static final TypeInformation<Double> DOUBLE = BasicTypeInfo.DOUBLE_TYPE_INFO;
+
+    /**
+     * Returns type information for both a primitive <code>char</code> and {@link java.lang.Character}. Does not support a null value.
+     */
+    public static final TypeInformation<Character> CHAR = BasicTypeInfo.CHAR_TYPE_INFO;
+
+    /** Returns type information for {@link java.math.BigDecimal}. Supports a null value. */
+    public static final TypeInformation<BigDecimal> BIG_DEC = BasicTypeInfo.BIG_DEC_TYPE_INFO;
+
+    /** Returns type information for {@link java.math.BigInteger}. Supports a null value. */
+    public static final TypeInformation<BigInteger> BIG_INT = BasicTypeInfo.BIG_INT_TYPE_INFO;
+
+    /** Returns type information for {@link java.sql.Date}. Supports a null value. */
+    public static final TypeInformation<Date> SQL_DATE = SqlTimeTypeInfo.DATE;
+
+    /** Returns type information for {@link java.sql.Time}. Supports a null value. */
+    public static final TypeInformation<Time> SQL_TIME = SqlTimeTypeInfo.TIME;
+
+    /** Returns type information for {@link java.sql.Timestamp}. Supports a null value. */
+    public static final TypeInformation<Timestamp> SQL_TIMESTAMP = SqlTimeTypeInfo.TIMESTAMP;
+
+    /** Returns type information for {@link java.time.LocalDate}. Supports a null value. */
+    public static final TypeInformation<LocalDate> LOCAL_DATE = LocalTimeTypeInfo.LOCAL_DATE;
+
+    /** Returns type information for {@link java.time.LocalTime}. Supports a null value. */
+    public static final TypeInformation<LocalTime> LOCAL_TIME = LocalTimeTypeInfo.LOCAL_TIME;
+
+    /** Returns type information for {@link java.time.LocalDateTime}. Supports a null value. */
+    public static final TypeInformation<LocalDateTime> LOCAL_DATE_TIME =
+            LocalTimeTypeInfo.LOCAL_DATE_TIME;
+
+    /** Returns type information for {@link java.time.Instant}. Supports a null value. */
+    public static final TypeInformation<Instant> INSTANT = BasicTypeInfo.INSTANT_TYPE_INFO;
+
+    // CHECKSTYLE.OFF: MethodName
+
+
+    // ====================================================================================================
+
+    public static TypeInformation<Row> ROW(TypeInformation<?>... types) {
+        return new RowTypeInfo(types);
+    }
+
+
+    public static TypeInformation<Row> ROW_NAMED(String[] fieldNames, TypeInformation<?>... types) {
+        return new RowTypeInfo(types, fieldNames);
+    }
+
+    public static <T extends Tuple> TypeInformation<T> TUPLE(TypeInformation<?>... types) {
+        return new TupleTypeInfo<>(types);
+    }
+
+    // ====================================================================================================
+
+    /**
+     * Returns type information for typed subclasses of Flink's {@link
+     * org.apache.flink.api.java.tuple.Tuple}. Typed subclassed are classes that extend {@link
+     * org.apache.flink.api.java.tuple.Tuple0} till {@link org.apache.flink.api.java.tuple.Tuple25}
+     * to provide types for all fields and might add additional getters and setters for better
+     * readability. Additional member fields must not be added. A tuple must not be null.
+     *
+     * <p>A tuple is a fixed-length composite type for storing multiple values in a deterministic
+     * field order. Fields of a tuple are typed. Tuples are the most efficient composite type; a
+     * tuple does not support null-valued fields unless the type of the field supports nullability.
+     *
+     * <p>The generic types for all fields of the tuple can be defined in a hierarchy of subclasses.
+     *
+     * <p>If Flink's type analyzer is unable to extract a tuple type information with type
+     * information for all fields, an {@link
+     * org.apache.flink.api.common.functions.InvalidTypesException} is thrown.
+     *
+     * <p>Example use:
+     *
+     * <pre>{@code
+     *   class MyTuple extends Tuple2<Integer, String> {
+     *
+     *     public int getId() { return f0; }
+     *
+     *     public String getName() { return f1; }
+     *   }
+     * }
+     *
+     * Types.TUPLE(MyTuple.class)
+     * </pre>
+     *
+     * @param tupleSubclass A subclass of {@link org.apache.flink.api.java.tuple.Tuple0} till {@link
+     *     org.apache.flink.api.java.tuple.Tuple25} that defines all field types and does not add
+     *     any additional fields
+     */
+    public static <T extends Tuple> TypeInformation<T> TUPLE(Class<T> tupleSubclass) {
+        final TypeInformation<T> ti = TypeExtractor.createTypeInfo(tupleSubclass);
+        if (ti instanceof TupleTypeInfo) {
+            return ti;
+        }
+        throw new InvalidTypesException("Tuple type expected but was: " + ti);
+    }
+
+    /**
+     * Returns type information for a POJO (Plain Old Java Object).
+     *
+     * <p>A POJO class is public and standalone (no non-static inner class). It has a public
+     * no-argument constructor. All non-static, non-transient fields in the class (and all
+     * superclasses) are either public (and non-final) or have a public getter and a setter method
+     * that follows the Java beans naming conventions for getters and setters.
+     *
+     * <p>A POJO is a fixed-length and null-aware composite type. Every field can be null
+     * independent of the field's type.
+     *
+     * <p>The generic types for all fields of the POJO can be defined in a hierarchy of subclasses.
+     *
+     * <p>If Flink's type analyzer is unable to extract a valid POJO type information with type
+     * information for all fields, an {@link
+     * org.apache.flink.api.common.functions.InvalidTypesException} is thrown. Alternatively, you
+     * can use {@link Types#POJO(Class, Map)} to specify all fields manually.
+     *
+     * @param pojoClass POJO class to be analyzed by Flink
+     */
+    public static <T> TypeInformation<T> POJO(Class<T> pojoClass) {
+        final TypeInformation<T> ti = TypeExtractor.createTypeInfo(pojoClass);
+        if (ti instanceof PojoTypeInfo) {
+            return ti;
+        }
+        throw new InvalidTypesException("POJO type expected but was: " + ti);
+    }
+
+    /**
+     * Returns type information for a POJO (Plain Old Java Object) and allows to specify all fields
+     * manually.
+     *
+     * <p>A POJO class is public and standalone (no non-static inner class). It has a public
+     * no-argument constructor. All non-static, non-transient fields in the class (and all
+     * superclasses) are either public (and non-final) or have a public getter and a setter method
+     * that follows the Java beans naming conventions for getters and setters.
+     *
+     * <p>A POJO is a fixed-length, null-aware composite type with non-deterministic field order.
+     * Every field can be null independent of the field's type.
+     *
+     * <p>The generic types for all fields of the POJO can be defined in a hierarchy of subclasses.
+     *
+     * <p>If Flink's type analyzer is unable to extract a POJO field, an {@link
+     * org.apache.flink.api.common.functions.InvalidTypesException} is thrown.
+     *
+     * <p><strong>Note:</strong> In most cases the type information of fields can be determined
+     * automatically, we recommend to use {@link Types#POJO(Class)}.
+     *
+     * @param pojoClass POJO class
+     * @param fields map of fields that map a name to type information. The map key is the name of
+     *     the field and the value is its type.
+     */
+    public static <T> TypeInformation<T> POJO(Class<T> pojoClass, Map<String, TypeInformation<?>> fields) {
+        final List<PojoField> pojoFields = new ArrayList<>(fields.size());
+        for (Map.Entry<String, TypeInformation<?>> field : fields.entrySet()) {
+            final Field f = TypeExtractor.getDeclaredField(pojoClass, field.getKey());
+            if (f == null) {
+                throw new InvalidTypesException(
+                        "Field '" + field.getKey() + "'could not be accessed.");
+            }
+            pojoFields.add(new PojoField(f, field.getValue()));
+        }
+
+        return new PojoTypeInfo<>(pojoClass, pojoFields);
+    }
+
+    public static <T> TypeInformation<T> GENERIC(Class<T> genericClass) {
+        return new GenericTypeInfo<>(genericClass);
+    }
+
+    /**
+     * Returns type information for Java arrays of primitive type (such as <code>byte[]</code>). The
+     * array must not be null.
+     *
+     * @param elementType element type of the array (e.g. Types.BOOLEAN, Types.INT, Types.DOUBLE)
+     */
+    public static TypeInformation<?> PRIMITIVE_ARRAY(TypeInformation<?> elementType) {
+        if (elementType == BOOLEAN) {
+            return PrimitiveArrayTypeInfo.BOOLEAN_PRIMITIVE_ARRAY_TYPE_INFO;
+        } else if (elementType == BYTE) {
+            return PrimitiveArrayTypeInfo.BYTE_PRIMITIVE_ARRAY_TYPE_INFO;
+        } else if (elementType == SHORT) {
+            return PrimitiveArrayTypeInfo.SHORT_PRIMITIVE_ARRAY_TYPE_INFO;
+        } else if (elementType == INT) {
+            return PrimitiveArrayTypeInfo.INT_PRIMITIVE_ARRAY_TYPE_INFO;
+        } else if (elementType == LONG) {
+            return PrimitiveArrayTypeInfo.LONG_PRIMITIVE_ARRAY_TYPE_INFO;
+        } else if (elementType == FLOAT) {
+            return PrimitiveArrayTypeInfo.FLOAT_PRIMITIVE_ARRAY_TYPE_INFO;
+        } else if (elementType == DOUBLE) {
+            return PrimitiveArrayTypeInfo.DOUBLE_PRIMITIVE_ARRAY_TYPE_INFO;
+        } else if (elementType == CHAR) {
+            return PrimitiveArrayTypeInfo.CHAR_PRIMITIVE_ARRAY_TYPE_INFO;
+        }
+        throw new IllegalArgumentException("Invalid element type for a primitive array.");
+    }
+
+    /**
+     * Returns type information for Java arrays of object types (such as <code>String[]</code>,
+     * <code>Integer[]</code>). The array itself must not be null. Null values for elements are
+     * supported.
+     *
+     * @param elementType element type of the array
+     */
+    @SuppressWarnings("unchecked")
+    public static <E> TypeInformation<E[]> OBJECT_ARRAY(TypeInformation<E> elementType) {
+        if (elementType == Types.STRING) {
+            return (TypeInformation) BasicArrayTypeInfo.STRING_ARRAY_TYPE_INFO;
+        }
+        return ObjectArrayTypeInfo.getInfoFor(elementType);
+    }
+
+    /**
+     * Returns type information for Flink value types (classes that implement {@link
+     * org.apache.flink.types.Value}). Built-in value types do not support null values (except for
+     * {@link org.apache.flink.types.StringValue}).
+     *
+     * <p>Value types describe their serialization and deserialization manually. Instead of going
+     * through a general purpose serialization framework. A value type is reasonable when general
+     * purpose serialization would be highly inefficient. The wrapped value can be altered, allowing
+     * programmers to reuse objects and take pressure off the garbage collector.
+     *
+     * <p>Flink provides built-in value types for all Java primitive types (such as {@link
+     * org.apache.flink.types.BooleanValue}, {@link org.apache.flink.types.IntValue}) as well as
+     * {@link org.apache.flink.types.StringValue}, {@link org.apache.flink.types.NullValue}, {@link
+     * org.apache.flink.types.ListValue}, and {@link org.apache.flink.types.MapValue}.
+     *
+     * @param valueType class that implements {@link org.apache.flink.types.Value}
+     */
+    public static <V extends Value> TypeInformation<V> VALUE(Class<V> valueType) {
+        return new ValueTypeInfo<>(valueType);
+    }
+
+    /**
+     * Returns type information for a Java {@link java.util.Map}. A map must not be null. Null
+     * values in keys are not supported. An entry's value can be null.
+     *
+     * <p>By default, maps are untyped and treated as a generic type in Flink; therefore, it is
+     * useful to pass type information whenever a map is used.
+     *
+     * <p><strong>Note:</strong> Flink does not preserve the concrete {@link Map} type. It converts
+     * a map into {@link HashMap} when copying or deserializing.
+     *
+     * @param keyType type information for the map's keys
+     * @param valueType type information for the map's values
+     */
+    public static <K, V> TypeInformation<Map<K, V>> MAP(
+            TypeInformation<K> keyType, TypeInformation<V> valueType) {
+        return new MapTypeInfo<>(keyType, valueType);
+    }
+
+    /**
+     * Returns type information for a Java {@link java.util.List}. A list must not be null. Null
+     * values in elements are not supported.
+     *
+     * <p>By default, lists are untyped and treated as a generic type in Flink; therefore, it is
+     * useful to pass type information whenever a list is used.
+     *
+     * <p><strong>Note:</strong> Flink does not preserve the concrete {@link List} type. It converts
+     * a list into {@link ArrayList} when copying or deserializing.
+     *
+     * @param elementType type information for the list's elements
+     */
+    public static <E> TypeInformation<List<E>> LIST(TypeInformation<E> elementType) {
+        return new ListTypeInfo<>(elementType);
+    }
+
+    /**
+     * Returns type information for Java enumerations. Null values are not supported.
+     *
+     * @param enumType enumeration class extending {@link java.lang.Enum}
+     */
+    public static <E extends Enum<E>> TypeInformation<E> ENUM(Class<E> enumType) {
+        return new EnumTypeInfo<>(enumType);
+    }
+
+    /**
+     * Returns type information for Flink's {@link org.apache.flink.types.Either} type. Null values
+     * are not supported.
+     *
+     * <p>Either type can be used for a value of two possible types.
+     *
+     * <p>Example use: <code>Types.EITHER(Types.VOID, Types.INT)</code>
+     *
+     * @param leftType type information of left side / {@link org.apache.flink.types.Either.Left}
+     * @param rightType type information of right side / {@link org.apache.flink.types.Either.Right}
+     */
+    public static <L, R> TypeInformation<Either<L, R>> EITHER(
+            TypeInformation<L> leftType, TypeInformation<R> rightType) {
+        return new EitherTypeInfo<>(leftType, rightType);
+    }
+
+    // CHECKSTYLE.ON: MethodName
+}
+```
+
+在`Types`类中，对于`Java`基本类型都是直接定义的常量，但对于`Tuple`、`POJO`和`Java`的集合类型都是定义的方法。
+
+**演示示例：将`Tuple2<String,Integer>`类型声明为Flink能够识别的`TypeInformation`**
+
+```Java
+TypeHint<Tuple2<String, Integer>> typeHint1 = new TypeHint<Tuple2<String, Integer>>() {};
+TypeInformation<Tuple> typeHint2 = Types.TUPLE(Types.STRING, Types.INT);
+```
+
+## 7.4、Operator State
+
+另一大类受控状态就是算子状态。算子状态只正对当前算子并行任务有效，不需要考虑不同`key`的隔离。算子状态功能没有键控状丰富，应用场景也较少，方法调用也与键控状态有些区别。
+
+### 7.4.1 ListState
+
+算子状态中的`ListState`与键控状态中的`ListState`一样，都是将状态保存为列表，并且列表中的每一个元素都是完全独立的。
+
+区别在于，键控状态的`ListState`在每个并行子任务上只有一个，所有到达该并行子任务的数据都能访问到该状态。
+
+当算子并行度发生调整时，`ListState`中的所有元素都会被收集起来，形成一个”大列表“，然后再轮询发送给各个并行子任务。
+
+### 7.4.2 UnionListState
+
+`UnionListState`与`ListState`相似，不同点在于算子并行度发生变化时，`UnionListState`会将上游每个并行子任务的状态广播到下游算子的并行子任务中，下游算子的每一个并行子任务都将拿到上游所有并行子任务的状态，这样，可以根据需要自行选择要使用的状态。
+
+### 7.4.3 BroadcastState
+
+# 八、多流转换
