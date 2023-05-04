@@ -5327,3 +5327,340 @@ TypeInformation<Tuple> typeHint2 = Types.TUPLE(Types.STRING, Types.INT);
 ### 7.4.3 BroadcastState
 
 # 八、多流转换
+
+无论是基本的简单转换和聚合，还是基于窗口的计算，都是对一条流进行数据的转换和计算，在实际的应用中，有时需要将多条数流进行合并处理，有时需要将一条流拆分出来，所以经常需要对数据流进行拆分或者合并的操作，为此，Flink为合流和分流分别提供了不同的预定义。
+
+## 8.1、分流
+
+分流，是将一条数据流拆分成完全独立的多条流，分流后，每条流中的数据构成一个完备事件组，各子数据流之间，数据互相排斥，各子数据流之间数据“之和”等于父流。
+
+分流的实现方式有两种，一是通过条件筛选：对同一条流多次独立调用`filter()`方法，就能够得到拆分之后的数据流。这种实现非常简单，但数据会出现冗余，相当于将原始数据流复制三份，然后对每一份数据流分别做数据筛选，这种写法不够高效。
+
+另一种写法是使用侧输出流进行分流：处理函数本身可以认为是一个转换算子，其输出数据类型是单一的、具体的，`DataStream`经过处理函数处理之后得到的仍然是一个`DataStream`。而侧输出流则不受闲置，可以任意定义输出数据的数据类型。
+
+## 8.2、合流
+
+### 8.2.1 数据的连接
+
+#### 8.2.1 union
+
+最简单的合流就是直接将多条数据流合并成一条数据流，基于`DataStream`调用`union()`方法，传入其他`DataStream`作为参数，返回结果依然是一个`DataStream`。
+
+**`union()`方法的定义**
+
+```Java
+public final DataStream<T> union(DataStream<T>... streams) {
+    List<Transformation<T>> unionedTransforms = new ArrayList<>();
+    unionedTransforms.add(this.transformation);
+
+    for (DataStream<T> newStream : streams) {
+        if (!getType().equals(newStream.getType())) {
+            throw new IllegalArgumentException(
+                    "Cannot union streams of different types: "
+                            + getType()
+                            + " and "
+                            + newStream.getType());
+        }
+
+        unionedTransforms.add(newStream.getTransformation());
+    }
+    return new DataStream<>(this.environment, new UnionTransformation<>(unionedTransforms));
+}
+```
+
+从方法的定义可以看到，`union()`方法的参数是一个可变长参数，参数的类型是`DataStream`，因此使用`union()`方法能同时对多条数据流进行合并，但需要注意的是只能对同样数据类型的`DataStream`进行合并。
+
+在多流合并过程中有一个问题需要考虑，即在事件时间语义下，数据流合并后，数据流的水位线是怎样确定的。
+
+水位线的本质是，当水位线到达某一时刻，那么该时刻之前并且包含该时刻的所有数据都已到达，所以对于合流之后的水位线，也以多条数据流中数据最小的时间戳为准，类似于算子并行度发生变化时，水位线的传递规则一样。
+
+#### 8.2.2 connect
+
+使用`union()`进行数据流的合并，方法和流处理逻辑简单，但存在数据类型的限制，只能对同样数据类型的数据流进行合并，为了能对不同数据类型的数据流进行合并，Flink提供了更为底层、更为通用的数据流合并操作：`connect`。
+
+`connect`合流操作能够对不同数据类型的数据流进行合并，但是一次只能合并两条数据流，并且在合流过程中，需要对参与合并的两条数据流分别定义各自的处理逻辑，使得两条数据流的输出数据类型相同，即达到合流的目的。换句话说，合流不仅是需要将两条流的数据合并到一起，还需要将两条流的数据类型也进行整合，使得合并后的数据流类型统一。
+
+在代码层面，进行双流合并时，基于`DataStream`调用`connect()`方法，传入另一个`DataStream`做为参数，将得到一个`ConnectedStreams`，随后，基于`ConnectedStreams`可以调用`keyBy()`、`map()`、`flatMap()`、`process()`等方法，用于对参与合流的两条数据流进行数据类型统一处理。其中`keyBy()`方法，用于对两条流中的数据进行分组，返回值依然是`ConnectedStreams`，因此，虽然双流合并是基于`DataStream`进行的，但是依旧可以对流中的数据进行分组。此外，还可以在合并之前就将两条流分别调用`keyBy()`，得到`KeyedStream`后再进行双流合并；`map()`、`flatMap()`方法用于除了对数据流中的数据进行数据类型整合以外，还可以对数据进行映射、或扁平映射；而`process()`方法的出现，说明需要传入处理函数对数据进行处理，在双流合并中，需要的处理函数是`CoProcessFunction`，对于键控流的双流合并，所需要的处理函数是`KeyedCoProcessFunction`。
+
+**`CoProcessFunction`的定义**
+
+```Java
+public abstract class CoProcessFunction<IN1, IN2, OUT> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = 1L;
+
+    public abstract void processElement1(IN1 value, Context ctx, Collector<OUT> out) throws Exception;
+
+    public abstract void processElement2(IN2 value, Context ctx, Collector<OUT> out) throws Exception;
+
+    public void onTimer(long timestamp, OnTimerContext ctx, Collector<OUT> out) throws Exception {}
+
+    public abstract class Context {
+
+        public abstract Long timestamp();
+
+        /** A {@link TimerService} for querying time and registering timers. */
+        public abstract TimerService timerService();
+
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+    }
+
+
+    public abstract class OnTimerContext extends Context {
+        /** The {@link TimeDomain} of the firing timer. */
+        public abstract TimeDomain timeDomain();
+    }
+}
+```
+
+**`KeyedCoProcessFunction`的定义**
+
+```Java
+public abstract class KeyedCoProcessFunction<K, IN1, IN2, OUT> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = 1L;
+
+    public abstract void processElement1(IN1 value, Context ctx, Collector<OUT> out) throws Exception;
+
+    public abstract void processElement2(IN2 value, Context ctx, Collector<OUT> out) throws Exception;
+
+    public void onTimer(long timestamp, OnTimerContext ctx, Collector<OUT> out) throws Exception {}
+
+    public abstract class Context {
+
+        public abstract Long timestamp();
+
+        /** A {@link TimerService} for querying time and registering timers. */
+        public abstract TimerService timerService();
+
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+
+        /** Get key of the element being processed. */
+        public abstract K getCurrentKey();
+    }
+
+    /**
+     * Information available in an invocation of {@link #onTimer(long, OnTimerContext, Collector)}.
+     */
+    public abstract class OnTimerContext extends Context {
+        /** The {@link TimeDomain} of the firing timer. */
+        public abstract TimeDomain timeDomain();
+
+        /** Get key of the firing timer. */
+        @Override
+        public abstract K getCurrentKey();
+    }
+}
+```
+
+从定义可以看出，无论是`CoProcessFunction`还是`KeyedCoProcessFunction`，都需要实现两个方法`processElement1`、`processElement2`，分别用于对第一条数据流和第二条数据流进行数据处理，其中，哪个`DataStream`调用`connect()`方法，哪个`DataStream`就是第一条流，而另外的那条流就是第二条流。此外，与其他处理函数相同的是，`CoProcessFunction`和`KeyedCoProcessFunction`都可以通过上下文对象来访问当前数据的`timeStamp`，当前数据到来时的水位线，也可以通过`TimeService`来注册定时器，同时，也提供了相应的`onTimer()`方法，用于定义定时器触发的处理操作。
+
+**==需要注意的是，如果基于`ConnectedStreams`调用`process()`方法并传入处理函数 `CoProcessFunction`之前，并没有调用`keyBy()`方法对数据进行分组，那么在`CoProcessFuntion`中仍然不能使用定时服务，这里再一次体现了只有键控流才能够使用定时服务。==**
+
+#### 8.2.3 broadcast
+
+在前面介绍数据向下游算子传递的方式时，有一种方式为广播，基于`DataStream`调用`broadcast()`，即可将上游数据发送到下游算子所有并行子任务中。在调用`broadcast()`方法时，除了基本调用（不传递参数）将数据进行广播，还可以传递参数`MapStateDescriptr`，将数据广播的同时转换成广播流`BroadcastStream`。
+
+将`DataStream`与`BroadcastStream`进行连接，可以得到广播连接流`BroadcastConnectedStream`。广播连接流一般用在需要动态定义某些规则或配置的场景，当规则时实时变动的，可以使用单独的一个流来获取动态规则流，并将其广播，但不同于简单的数据向下游发送，为了使下游中其他数据流使用这些规则数据，在广播数据的同时还应当将其存储起来以供使用，因此，Flink在其预定义的实现中，将这些数据广播并以`MapState`的形式存储这些数据，并称之为广播流。而下游算子中的数据要想使用这些数据，那么需要与这些广播流进行连接，得到的就是广播连接流。
+
+**广播连接流基本使用方式**
+
+```Java
+// 定义广播流状态
+MapStateDescriptor<String, String> broadcastState = new MapStateDescriptor<>("broadcastState", String.class, String.class);
+
+// 将数据流转换成广播流
+BroadcastStream<WebPageAccessEvent> broadcast = dataStream1.broadcast(broadcastState);
+
+// 将数据流与广播流进行连接，使用非键控流演示
+BroadcastConnectedStream<WebPageAccessEvent, WebPageAccessEvent> connect = stream1.connect(broadcast);
+```
+
+**数据流与广播流连接后得到的广播连接流`BroadcastConnectStream`可以调用`process()`方法，当然，传入的也是一个处理函数。基于不同的数据流，传入的处理函数也是不同的，对于非键控流，需要传入处理函数`BroadcastProcessFunction`，对于键控流，需要传入的处理函数是`KeyedBroadcastProcessFunction`。**
+
+**`BroadcastProcessFunction`的定义**
+
+```Java
+public abstract class BroadcastProcessFunction<IN1, IN2, OUT> extends BaseBroadcastProcessFunction {
+
+    private static final long serialVersionUID = 8352559162119034453L;
+
+    public abstract void processElement(final IN1 value, final ReadOnlyContext ctx, final Collector<OUT> out) throws Exception;
+
+    public abstract void processBroadcastElement(final IN2 value, final Context ctx, final Collector<OUT> out) throws Exception;
+
+    public abstract class Context extends BaseBroadcastProcessFunction.Context {}
+
+    public abstract class ReadOnlyContext extends BaseBroadcastProcessFunction.ReadOnlyContext {}
+}
+```
+
+**`KeyedBroadcastProcessFunction`的定义**
+
+```Java
+public abstract class KeyedBroadcastProcessFunction<KS, IN1, IN2, OUT>
+        extends BaseBroadcastProcessFunction {
+
+    private static final long serialVersionUID = -2584726797564976453L;
+
+    public abstract void processElement(
+            final IN1 value, final ReadOnlyContext ctx, final Collector<OUT> out) throws Exception;
+
+    public abstract void processBroadcastElement(
+            final IN2 value, final Context ctx, final Collector<OUT> out) throws Exception;
+
+    public void onTimer(final long timestamp, final OnTimerContext ctx, final Collector<OUT> out)
+            throws Exception {
+        // the default implementation does nothing.
+    }
+
+    public abstract class Context extends BaseBroadcastProcessFunction.Context {
+
+        public abstract <VS, S extends State> void applyToKeyedState(
+                final StateDescriptor<S, VS> stateDescriptor,
+                final KeyedStateFunction<KS, S> function)
+                throws Exception;
+    }
+
+    public abstract class ReadOnlyContext extends BaseBroadcastProcessFunction.ReadOnlyContext {
+
+        /** A {@link TimerService} for querying time and registering timers. */
+        public abstract TimerService timerService();
+
+        /** Get key of the element being processed. */
+        public abstract KS getCurrentKey();
+    }
+
+    /**
+     * Information available in an invocation of {@link #onTimer(long, OnTimerContext, Collector)}.
+     */
+    public abstract class OnTimerContext extends ReadOnlyContext {
+
+        public abstract TimeDomain timeDomain();
+
+        /** Get the key of the firing timer. */
+        @Override
+        public abstract KS getCurrentKey();
+    }
+}
+```
+
+**可以看到`KeyedBroadcastProcessFunction`和`BroadcastProcessFunction`都需要实现两个抽象方法，而这两个抽象方法分别用于处理对应的两条流中的元素。**
+
+### 8.2.2 数据的联结
+
+不同于数据的连接，是将多条流的数据合并成一条流，总数据元素数量等于各子数据流数据元素之和，数据的联结是将符合条件的数据进行“配对”，将配对成功的数据进行输出。
+
+数据的联结，其底层实现依然是使用数据的连接操作进行实现，由于这种数据使用场景较为常见，因此，Flink在其内部进行了预定义实现，这也使得数据联结的使用步骤也是较为固定的。
+
+#### 8.2.2.1 窗口联结
+
+**窗口联结的使用步骤：**
+
+```java
+stream1.join(stream2)
+    .where(<keySelector>)
+    .equalTo(<KeySelector>)
+    .window(<WindowAssigner>)
+    .apply(<JoinFunction>)
+```
+
+**基于`DataStream`调用`join()`方法，传入另一个`DataStream`，得到一个`JoinedStreams`，是随后分别调用`where()`和`equalTo()`方法，分别制定第一条流和第二条流中的`key`，然后调用`window()`方法，传入时间窗口，进行开窗，最后调用`apply()`，传入`JoinFunction`，定义对数据的处理逻辑。**
+
+**在调用了`window()`方法后，就相当于开窗了，因此对于窗口中使用的触发器、延迟时间、移除器、延迟时间等，都可以使用。**
+
+**需要说明的是`JoinFunction`是一个接口，因此并不是处理函数，其定义如下**
+
+```Java
+public interface JoinFunction<IN1, IN2, OUT> extends Function, Serializable {
+
+    OUT join(IN1 first, IN2 second) throws Exception;
+}
+```
+
+**该接口只有一个实现类：`RichJoinFunction`，其定义如下：**
+
+```Java
+public abstract class RichJoinFunction<IN1, IN2, OUT> extends AbstractRichFunction
+        implements JoinFunction<IN1, IN2, OUT> {
+
+    private static final long serialVersionUID = 1L;
+
+    @Override
+    public abstract OUT join(IN1 first, IN2 second) throws Exception;
+}
+```
+
+**窗口联结的数据处理过程：**
+
+**两条数据流到来之后，首先会按照`key`进行分组，进入对应的窗口中存储，当达到窗口结束时间时，Flink会先统计出窗口内两条流所有数据的所有组合，即对窗口中两条流所有数据进行一次笛卡尔积，然后对笛卡尔积结果进行遍历，将所有配对成功的数据作为参数传入`JionFunction`的`join()`方法，进行处理并得到结果。==所以，窗口中每有一对数据成功配对的数据，`JoinFunction`的`join()`方法就会调用一次，并输出一个结果。==**
+
+#### 8.2.2.2 间隔联结
+
+间隔联结，针对一条流的每个数据，开辟出其时间戳前后的一段时间间隔，在这段时间内，与另一条数据流中的数据进行配配对，如果在这段时间内，没有数据到来，那么将不会有成功配对的数据。
+
+**由于间隔联结也是Flink预定义实现的，因此，其调用步骤也是基本固定**
+
+```java
+stream1.keyBy(<KeySelector>)
+    .intervalJoin(stream2.keyBy(<KeySelector))
+    .between(<Time>, <Time>)
+    .process(<ProcessJoinFunction>)
+```
+
+**基于`DataStream`调用`keyBy()`方法，对数据流进行分组，得到`KeyedStream`，并调用`intervalJoin()`方法，传入另一个数据流的`KeyedStream`作为参数，随后调用`between()`方法，指定时间间隔的上下界，最后调用`process()`方法，定义对匹配成功数据的处理逻辑。**
+
+**`ProcessJionFunction`是处理函数，其定义是：**
+
+```Java
+public abstract class ProcessJoinFunction<IN1, IN2, OUT> extends AbstractRichFunction {
+
+    private static final long serialVersionUID = -2444626938039012398L;
+
+    public abstract void processElement(IN1 left, IN2 right, Context ctx, Collector<OUT> out)
+            throws Exception;
+
+    public abstract class Context {
+
+        /** @return The timestamp of the left element of a joined pair */
+        public abstract long getLeftTimestamp();
+
+        /** @return The timestamp of the right element of a joined pair */
+        public abstract long getRightTimestamp();
+
+        /** @return The timestamp of the joined pair. */
+        public abstract long getTimestamp();
+
+        public abstract <X> void output(OutputTag<X> outputTag, X value);
+    }
+}
+```
+
+**间隔联结的原理：**
+
+**间隔联结中，需要指定时间上的上界`upperBound`和下界`lowerBound`。对于一条流中的任意一个数据元素`a`，可以开辟一段时间间隔：`[a.timestamp + lowerBound, a.timestamp + upperBound]`，即以`a`的时间戳作为中心，下至下界点，上至上界点，开辟一个时间上的左闭右闭区间，这段时间范围即为匹配另一条流数据的“窗口”。对于另一条流中的数据元素`b`，如果`b.timestamp ≥ a.timestamp +lowerBound` ，并且`b.timestamp ≤ a.timestamp + upperBound`，那么数据`a`和数据`b`就能够成功配对。当然，数据`a`和数据`b`的`key`必须相同，而且，间隔联结只支持事件时间语义。**
+
+#### 8.2.2.3 窗口同组联结
+
+除了窗口联结和间隔联结外，Flink还预定义了窗口同组联结操作，其用法与窗口联结非常类型，也是将两条流合并之后，开窗处理匹配的元素，`API`调用时只需要将`join()`方法替换成`coGroup()`就可以了。
+
+**窗口同组联结调用步骤：**
+
+```java
+stream1.coGroup(stream2)
+    .where(<KeySelector>)
+    .equalTo(KeySelector>)
+    .window(<windowAssigner>)
+    .apply(<coGroupFunction>)
+```
+
+**`CoGroupFunction`的定义：**
+
+```Java
+public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
+
+    void coGroup(Iterable<IN1> first, Iterable<IN2> second, Collector<O> out) throws Exception;
+}
+```
+
+**`CoGroupFunction`定义的抽象方法`coGroup()`与`JoinFunction`定义的抽象方法`join()`相似，都有三个参数，分别表示两条流中的数据以及用于输出的收集器`Collector`。不同的是，`coGroup()`方法中，用于表示数据流中数据的参数不再是单独的每一组“配对”成功的数据了，而是传入了可便利的数据集合。换句话说，现在不会再去计算窗口中两条数据流中数据的笛卡尔积，而是直接把收集到的数据全部传入，至于做什么样的数据处理逻辑，则是用户完全自定义的，因此`coGroup()`方法只会在窗口关闭的时候被调用一次，而且即使一条流的数据没有任何另一条流的数据匹配，也可以出现在集合中。所以，窗口同组联结是更为通用的存在。**
