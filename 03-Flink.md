@@ -5664,3 +5664,261 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
 ```
 
 **`CoGroupFunction`定义的抽象方法`coGroup()`与`JoinFunction`定义的抽象方法`join()`相似，都有三个参数，分别表示两条流中的数据以及用于输出的收集器`Collector`。不同的是，`coGroup()`方法中，用于表示数据流中数据的参数不再是单独的每一组“配对”成功的数据了，而是传入了可便利的数据集合。换句话说，现在不会再去计算窗口中两条数据流中数据的笛卡尔积，而是直接把收集到的数据全部传入，至于做什么样的数据处理逻辑，则是用户完全自定义的，因此`coGroup()`方法只会在窗口关闭的时候被调用一次，而且即使一条流的数据没有任何另一条流的数据匹配，也可以出现在集合中。所以，窗口同组联结是更为通用的存在。**
+
+# 九、容错机制
+
+机器运行程序会因为各种软硬件的原因，在运行一段时间后程序可能异常退出。对于实时流处理，当程序失败时，不仅需要保证能够重启程序，还需要保证重启后，数据的“断点续传”，以及故障恢复的速度。在Flink中，有一套完整的容错机制`Fault Tolerance`来保证程序故障后的恢复，其中最重要的是检查点`Checkpoint`的设计。
+
+## 9.1、检查点
+
+区别于离线大数据组件，Flink程序都具有运行时`State`，默认情况下，为了快速访问状态，Flink将任务的状态保存在内存中，因此，当Flink程序失败时，内存中的状态都将丢失，这就意味着之前的计算全部白费，在任务重启之后，需要重新计算。因此，为了使Flink程序能够“断点续传”，在任务失败时不做重复计算，那么就需要将某个时间点的所有状态都保存下来，所保存的内容以及操作就是检查点。
+
+检查点是Flink容错机制的核心，当遇到故障需要重启的时候，可以从检查点中读取之前任务的状态，这样就可以回到当时保存检查点的那一刻，进而继续进行数据处理。
+
+**基于Flink实时数据处理的特性，在进行检查点保存时存在三个问题需要解决：**
+
+-   **什么时候进行检查点保存**
+-   **Flink中正在处理的数据怎么处理**
+-   **Flink中众多并行子任务会做什么样的反应**
+
+为了解决这些问题，Flink采用了基于`Chandy-Lamport`算法的分布式快照。当`JobManager`发出保存检查点的命令后，`Source`任务将向数据流中发送一个检查点分界线`Checkpoint Barrier`。
+
+与水位线类型，检查点分界线也是一种特殊的数据，由`Source`算子发送到常规的数据流中，从时间的角度观察，其位置是固定的，不能超越前面的数据，也不能被后面的数据超越，检查点分界线中带有检查点`ID`，是当前检查点的唯一标识。
+
+检查点分界线将数据流从逻辑上分成了两部分：检查点分界线之前到来的数据将导致状态的变更，会被包含在当前分界线所表示的检查点中；检查点分界线之后的数据将不会保存在当前分界线所表示的检查点中，而是会存储在下一个分界线代表的检查点中。
+
+由于检查点分界线也是一种特殊的数据，在分布式流式数据处理中，仍然需要考虑其在不同算子并行子任务中的传递问题。
+
+检查点分界线的实际意义是：分界线之前到来的数据都将使状态发生改变，而检查点保存的是更新后的状态。
+
+为此，Flink采用了异步分界线快照算法，该算法的核心有两个原则：当上游任务向下游算子的多个并行子任务发送检查点分界线是，需要将其广播出去；当上游算子的多个并行子任务向下游算子的同一个并行子任务发送检查点分界线时，需要在下游任务执行分界线对其操作，即需要等待所有并行分区的所有的检查点分界点都到齐才会开始状态的保存。
+
+由于下游算子的并行子任务需要等待上游算子所有并行子任务的检查点分界线，因此对下游算子并行子任务的数据处理速度有一定的影响。如果上游算子的某个并行子任务数据量过大，导致检查点分界线迟迟未能发送出去，将导致下游算子会堆积大量的缓冲数据，导致检查点需要很久才能保存完成，因此也会出现背压。
+
+为此，Flink 1.11版本之后，提供了不对齐的检查点保存方式，可以将未处理的缓冲数据也保存进检查点。
+
+**==需要注意的是，要想正确地从检查点中读取并恢复状态，必须知道每个算子任务状态的类型和拓扑结构，因此，为了能正确地从之前的检查点恢复状态，在改动程序、修复bug时要保证算子的类型和拓扑顺序不变。==**
+
+## 9.2、检查点的配置项
+
+默认情况下，Flink程序是禁用检查点的，如果需要Flink程序开启检查点功能，需要在执行环境中进行配置。
+
+检查点的间隔时间是对处理性能和故障恢复速度的一个权衡，如果希望对性能的影响更小，可以调大时间间隔；如果希望故障恢复后迅速赶上实时的数据处理，那么就需要将间隔时间设置小一些。
+
+-   **开启Flink程序检查点：使用流数据处理环境对象调用`enableCheckpointing()`方法，传入以毫秒为单位的时间间隔，表示每隔多长时间`JobManager`发送一次检查点保存指令，也是`TaskManager`发送检查点分界线的周期**
+
+>   **开启了检查点之后，许多的检查点设置都可以通过检查点配置对象`CheckpointConfig`来进行配置，获取检查点配置对象通过流执行环境调用`getCheckpointConfig()`方法获得：**
+>
+>   ```java
+>   CheckpointConfig checkpointConfig = env.getCheckpointConfig();
+>   ```
+
+-   **设置检查点保存路径：Flink提供了两种检查点保存类型，一种是堆内存，另一种是文档文件系统。默认情况下，Flink将检查点保存在`JobManager`的堆内存中。而在生产环境中，检查点一般保存在文件系统中。配置检查点存储路径，使用流执行环境对象调用`setCheckpointStorage()`方法，传入一个`CheckpointStorage`类型的参数，`CheckpointStorage`是一个枚举类**
+
+    -   **将检查点保存到`JobManager`堆内存中：**
+
+        ```java
+        checkpointConfig.setCheckpointStorage(new JobManagerCheckpointStorage());
+        ```
+
+    -   **将加差点保存到外部文件系统中：**
+
+        ```Java
+        checkpointConfig.setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://hadoop132:9820/flink/checkpoint"));
+        ```
+
+-   **设置检查点模式：检查点一致性的保证级别，有精确一次`exactly-once`和至少一次`at-least-once`。默认级别为`exactly-once`，而对于大多数低延迟的流处理程序，`at-least-once`就足够使用了，而且数据处理效率会更高**
+
+    ```Java
+    // 至少一次
+    envCheckpointConfig.setCheckpointingMode(CheckpointingMode.AT_LEAST_ONCE);
+    // 精确一次
+    envCheckpointConfig.setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+    ```
+
+-   **设置检查点超时时间：Flink进行检查点需要花费时间，该配置项用于配置进行检查点保存所花费的最大时间，超出该时间，检查点保存还未完成，默认情况下，Flink将丢弃该检查点**
+
+    ```Java
+    envCheckpointConfig.setCheckpointTimeout(5 * 1000L);
+    ```
+
+-   **最大并发检查点数量：用于指定同时运行的检查点数量有多少个**
+
+    ```Java
+    envCheckpointConfig.setMaxConcurrentCheckpoints(2);
+    ```
+
+-   **最小间隔时间：用于指定上一个检查点完成之后，间隔多长时间才能开始下一个检查点。该配置项的优先级高于开启检查点时的设置检查点间隔时间。==当配置了该参数后，当前最大并发检查点数量强制设置为1。==**
+
+    ```Java
+    envCheckpointConfig.setMinPauseBetweenCheckpoints(10 * 1000L);
+    ```
+
+-   **开启外部持久化存储：默认情况下，在`Job`失败的时候，Flink不会自动清理已保存的检查点 。该配置项用于配置`Job`失败时，是否需要将外部持久化的检查点进行清理。配置时，使用检查点配置对象`CheckpointConfig`调用`enableExternalizedCheckpoints()`，传入一个`ExternalizedCheckpointCleanup`类型的参数**
+
+    **`ExternalizedCheckpointCleanup`是一个枚举类：**
+
+    -   **`DELETE_ON_CANCELLATION`：在`Job`取消的时候会自动删除外部检查点，如果是`Job`失败退出，那么会保存检查点**
+    -   **`RETAIN_ON_CANCELLATION`：作业取消的时候也会保存外部检查点**
+
+    ```Java
+    //  配置1：作业取消时，删除外部检查点；如果是作业失败退出，依然会保留检查点
+    envCheckpointConfig.enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.DELETE_ON_CANCELLATION);
+    //  配置2：作业取消时，也保留外部检查点
+    envCheckpointConfig.enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+    ```
+
+-   **检查点异常时是否让整个任务失败：用于指定检查点发生异常的时候，是否应该让任务直接失败退出，默认为`true`，即检查点失败直接将导致任务失败。可以设置为`false`，即检查点失败时，任务将丢弃检查点后继续运行**
+
+    ```java
+    // 配置检查点异常时是否让整个任务失败：配置为失败
+    // 该方法已被弃用
+    envCheckpointConfig.setFailOnCheckpointingErrors(false);
+    ```
+
+-   **配置检查点可以失败的次数：默认情况下，检查点可以失败的次数为0，即不允许检查点失败，该情况下，如果检查点失败，将导致整个任务失败。**
+
+    ```java
+    envCheckpointConfig.setTolerableCheckpointFailureNumber(0);
+    ```
+
+-   **配置不对齐检查点：不再执行检查点的分界线对齐操作，启用后，可以大幅减小并行子任务的检查点保存时间。==该配置要求检查点模式必须为`exctly-once`，并且并发检查点的个数为1==**
+
+    ```java
+    // 配置不对齐检查点，该方法的默认值为true，即开启不对齐检查点
+    envCheckpointConfig.enableUnalignedCheckpoints(true);
+    ```
+
+**完整检查点配置实例：**
+
+```Java
+/**
+ * Author: shaco
+ * Date: 2023/5/6
+ * Desc: 检查点配置
+ */
+public class C028_CheckPointConfig {
+    public static void main(String[] args) {
+        // TODO 获取流执行环境
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+
+        // 1、开启Flink检查点功能，设置每隔1分钟进行一次检查点。参数单位为毫秒
+        env.enableCheckpointing(60 * 1000L);
+
+        // TODO 获取检查点配置对象
+        CheckpointConfig envCheckpointConfig = env.getCheckpointConfig();
+
+        // 2、设置检查点保存路径
+        // 保存到JobManager堆内存中
+        envCheckpointConfig.setCheckpointStorage(new JobManagerCheckpointStorage());
+        // 保存到外部文件系统中
+        envCheckpointConfig.setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://hadoop132:9820/flink/checkpoint"));
+
+        // 3、设置检查点模式：精确一次和至少一次
+        // 至少一次
+        envCheckpointConfig.setCheckpointingMode(CheckpointingMode.AT_LEAST_ONCE);
+        // 精确一次
+        envCheckpointConfig.setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
+
+        // 4、配置检查点超时时间，时间限制为5s
+        envCheckpointConfig.setCheckpointTimeout(5 * 1000L);
+
+        // 5、配置最大并发检查点数量：1
+        envCheckpointConfig.setMaxConcurrentCheckpoints(1);
+
+        // 6、设置检查点最小间隔时间：10 s
+        envCheckpointConfig.setMinPauseBetweenCheckpoints(10 * 1000L);
+
+        // 7、配置是否开启外部持久化存储
+        //  配置1：作业取消时，删除外部检查点；如果是作业失败退出，依然会保留检查点
+        envCheckpointConfig.enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.DELETE_ON_CANCELLATION);
+        //  配置2：作业取消时，也保留外部检查点
+        envCheckpointConfig.enableExternalizedCheckpoints(CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+
+        // 8、配置检查点异常时是否让整个任务失败：配置为失败
+        envCheckpointConfig.setFailOnCheckpointingErrors(false);
+
+        // 9、配置检查点可以失败的次数，默认情况下，可以失败的次数为0，即不允许检查点失败，如果失败，将导致任务失败
+        envCheckpointConfig.setTolerableCheckpointFailureNumber(0);
+
+        // 10、配置不对齐检查点，该方法的默认值为true，即开启不对齐检查点
+        envCheckpointConfig.enableUnalignedCheckpoints(true);
+    }
+}
+```
+
+## 9.3、保存点
+
+除了检查点外，Flink还提供了另一个非常独特的镜像保存功能：保存点`Savepoint`。保存点也是一个存盘的备份，其原理和算法与检查点完全相同，只是多了一些额外的元数据。事实上，保存点就是通过检查点的机制来创建流式作业状态的一致性镜像的。
+
+保存点的快照是以算子`ID`和状态的名称组织起来的，相当于一个`key-value`，从保存点启动应用程序时，Flink会将保存点的状态重新分配给相应的算子任务。
+
+**保存点的用途：**
+
+保存点与检查点的最大区别在于其触发时机。检查点的触发时机由开发者设置，由Flink自动管理，定期创建，发生故障后，自动读取进行故障恢复，这是自动进行的。保存点不会自动创建，必须由用户明确地手动触发保存操作，是由开发者手动进行地。因此尽管两者原理一致，但用途有着很大的区别：检查点主要用来做故障恢复，是容错机制的核心；而保存点主要用来做有计划的手动备份和恢复。
+
+保存点可以作为一个强大的运维工具来使用，在需要的时候创建一个保存点，然后停止应用，做一些调整或者出理之后再从保存点重启。
+
+**具体使用场景有：**
+
+-   **版本管理和归档存储：**对重要的节点进行手动备份，设置某一版本，归档存储应用程序的状态
+-   **更新Flink版本：**当前Flink版本的底层架构已经非常稳定了，所以当Flink版本升级时，程序本身一般时兼容的，这时不需要重新执行所有的计算，只需要在停止应用的时候创建一个保存点，然后升级Flink版本，再从保存点启动就可以继续进行数据处理了
+-   **更新应用程序：**除了更新Flink版本，也可以更新应用程序。但在更新应用程序的时候，需要保证算子或状态的拓扑结构和数据类型都是不变的，这样才能正常从保存的保存点去加载
+-   **调整并行度：**如果应用运行过程中，需要的资源不足或者资源大量剩余，也可以通过保存点重启的方式，将应用程序的配置资源进行调整
+-   **暂停应用程序：**有时候不需要调整集群或者更新程序，只是单纯地需要将应用停止，释放一些资源来处理优先级更高地应用，这时就可以使用保存点进行应用的暂停和重启
+
+**==需要注意的时，保存点能够在程序更改的时候依然兼容，前提时状态的拓扑结构和数据类型不变，而保存点中状态都是以算子`ID`和状态名称这样的`key-value`进行组织的，对于没有设置`ID`的算子，Flink默认会自动进行设置，所以在重启应用后，可能会导致`ID`不同而无法兼容以前的状态，所以，为了便于后期的维护，开发者应该在程序中为每一个算子手动指定算子`ID`。==**
+
+**==Flink中为算子指定`ID`，通过算子调用`uid()`方法，传入字符串参数作为算子的`ID`。==**
+
+**保存点的使用**
+
+保存点的使用非常简单，通过命令行工具来创建保存点，以及从保存点恢复作业。
+
+-   **创建保存点：**
+    -   **在命令行中执行命令：`flink savepoint <jobID> [targetDirectory]`。其中`jobID`是需要做保存点的作业`ID`，`targetDirectory`是保存点的保存路径，是可选项**
+    -   **对于保存点的默认路径，可以通过配置文件`flink-conf.yaml`中的`state.savepoint.dir`配置项来进行配置**
+    -   **对于单独的作业，也可以在代码中通过执行环境调用`setDefaultSavepointDir()`方法来进行配置**
+    -   **由于保存点一般都是希望更改环境之后重启，所以创建保存点之后往往都是立刻停止作业，所以，除了对运行的作业创建保存，也可以在停止一个作业时直接创建保存点**
+        -   **在命令行中执行命令：`flink stop --savepointPath [targetDirectory] <jobID> `，将会在任务停止时创建保存点**
+-   **从保存点中重启应用，在命令行中执行命令：`flink run -s [savepointPath]`。在启动Flink应用时，添加参数`-s`用于指定保存点路径即可从保存点中启动任务，其他的启动参数完全不变。在`web UI`中进行作业提交时，可以填入的参数，除了入口类、并行度和运行参数，还有一个`Savepoint Path`，这就是从保存点启动应用的配置**
+
+## 9.4、端到端的一致性
+
+Flink中一致性的概念主要用在故障恢复的描述中，简单来说，一致性就是结果的正确性。对于分布式系统而言，强调的是不同节点中相同数据的副本应该总是一致的，也就是从不同的节点读取时总能得到相同的值；对于事物而言，要求提交更新操作后，能够读取到新的数据。
+
+对于Flink来说，多个节点并行处理不同的任务，需要保证计算结果的正确性，就必须不漏掉一个数据，也不会重复计算任何一个数据。流式计算本身就是事件触发，来一条数据计算一条数据，所以正常处理的过程中结果肯定时正确的，但是在发生故障，需要恢复状态进行回滚时，就需要更多的保证机制。
+
+Flink通过检查点的保存来保证故障恢复后结果的正确，所以需要讨论故障恢复后的状态一致性。
+
+状态的一致性分为三种：最多一次、至少一次、精确一次。
+
+对于开启了检查点的Flink系统而言，其内部的状态一致性能够做到**最多一次、至少一次、精确一次**。
+
+然而，实际生产中，Flink需要从外部读取数据，将其处理之后再写出到外部系统，因此，只有Flink本身保证数据的精确一次性还远远不够。要想保证依赖于Flink框架的实时流数据处理系统的整体精确一次性，那么对外部系统还有一定的要求。
+
+**对于`Source`端，要求外部数据源必须具有数据重放的能力，这样能够保证在故障恢复之后，数据不丢失。**
+
+**对于`Sink`端，要求在任务失败时，对于两次检查点之间写入的数据能够进行撤销。**
+
+因此，要求外部存储系统以及`Sink`连接器对数据的写出必须基于幂等写入或者事务写入。
+
+**幂等写入**
+
+幂等写入并没有真正解决数据重复计算、写入的问题，而是说，重复写入也没有关系，结果不会改变。所以这种方式主要的限制在于外部存储系统必须支持这样的幂等写入，比如`Redis`中的`key-value`存储，或者关系型数据库中更新操作。
+
+需要注意的是，对于幂等写入，遇到故障恢复时，有可能出现短暂的不一致。因为检查点完成之后到发生故障之间的数据，其实已经写入了一遍，回滚的时候并不能撤回，因此，在外部系统读取写入的数据时，短时间内，结果会突然条回到之前的某个值，然后”重播“一段之前的数据。不过当数据重放超过发生故障的点的时候最终结果还是一致的。
+
+**事务写入**
+
+幂等写入能够保证数据重复写入也不会导致结果发生变化，而事务写入能够在任务失败时，将已写入的数据进行撤回，完全保证数据只写出一次。
+
+事务的特性保证了所有操作必须完全成功，否则在每个操作中所作的所有更改都会被撤销。
+
+在Flink流处理结果写入外部系统时，如果能够构建一个事务，让写入操作可以随着检查点来提交和回滚，那么自然就可以解决重复写入的问题。其基本思路就是，用一个事务来进行数据项外部系统的写入，这个事务是与检查点绑定在一起的。当`Sink`
+
+任务遇到检查点分界线时，开始保存状态，同时，开启一个事务，将接下来所有数据都写入到这个事务中，等检查点保存完毕时，将事务提交，这样所有数据就成功写入了。如果中间过程出现故障，那么状态会回退到上一个检查点，而当前事务就会回滚，写入到外部的数据就会被撤销。
+
+事务的实现方式有两种，一种是预写日志`WAL`，另一种是两阶段提交`2PC`。
+
+**详细优缺点，看文档。**
