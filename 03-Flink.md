@@ -1,75 +1,75 @@
 <h1 align = "center">Flink
 </h1>
 
-# 一、Flink简介
+# 一、`Flink`简介
 
-# 二、Flink部署和运行模式
+# 二、`Flink`部署和运行模式
 
-在不同的部署模式下，Flink各组件的启动以及资源获取的方式都有所不同，为此Flink提供了三种不同的部署模式。而在不同的运行环境下，Flink的资源调度和服务启停也都有所不同，Flink根据不同的场景也提供了不同运行模式。
+在不同的部署模式下，`Flink`各组件的启动以及资源获取的方式都有所不同，为此`Flink`提供了三种不同的部署模式。而在不同的运行环境下，`Flink`的资源调度和服务启停也都有所不同，`Flink`根据不同的场景也提供了不同运行模式。
 
 ## 2.1、部署模式
 
-为满足不同场景中，集群资源分配和占用方式的需求，Flink提供了不同的部署模式。这些模式的主要区别在于：集群的生命周期以及资源的分配方式，以及Flink应用中main方法到底在哪里执行：Client还是JobManager。
+为满足不同场景中，集群资源分配和占用方式的需求，`Flink`提供了不同的部署模式。这些模式的主要区别在于：集群的生命周期以及资源的分配方式，以及`Flink`应用中`main`方法到底在哪里执行：`Client`还是`JobManager`。
 
->   **==一段Flink代码就是一个应用（Application）。==**
+>   **==一段Flink代码就是一个应用（`Application`）。==**
 >
->   **==在一个Application中可以存在多个作业（Job），一个Job由流式执行环境、Sink算子、数据处理操作、Source算子、流式数据处理执行。==**
+>   **==在一个`Application`中可以存在多个作业（`Job`），一个`Job`由流式执行环境、`Sink`算子、数据处理操作、`Source`算子、流式数据处理执行。==**
 >
->   **==一个Job包含多个Flink算子，一个算子即是一个任务（Task）==**
+>   **==一个`Job`包含多个`Flink`算子，一个算子即是一个任务（Task）==**
 >
 >   **==一个算子由于并行度的属性，所以一个算子可以有很多并行子任务。==**
 
-### 2.1.1 会话模式（Session Mode）
+### 2.1.1 会话模式（`Session Mode`）
 
-会话模式最为符合常规思维：先启动一个Flink集群，保持一个会话，在这个会话中通过Client提交Application，进而提交Job。
+会话模式最为符合常规思维：先启动一个`Flink`集群，保持一个会话，在这个会话中通过`Client`提交`Application`，进而提交`Job`。
 
-这样做的好处是，我们只需要一个集群，所有的Job提交之后都放到这个集群中去运行，集群的生命周期是超越Job的，Job执行结束后，就释放资源，集群依然运行。
+这样做的好处是，我们只需要一个集群，所有的`Job`提交之后都放到这个集群中去运行，集群的生命周期是超越`Job`的，`Job`执行结束后，就释放资源，集群依然运行。
 
-其缺点也是显而易见的，因为资源是共享的，所以当资源不够时，新提交的Job就会失败。此外，如果一个发生故障导致TaskManager宕机，那么所有Job都会受到影响。
+其缺点也是显而易见的，因为资源是共享的，所以当资源不够时，新提交的`Job`就会失败。此外，如果一个发生故障导致`TaskManager`宕机，那么所有`Job`都会受到影响。
 
-### 2.1.2 单作业模式（Per-Job Mode）
+### 2.1.2 单作业模式（`Per-Job Mode`）
 
-会话模式会因为资源共享导致很多问题，所以为了隔离每个Job所需要的资源，Flink还提供了单作业模式。
+会话模式会因为资源共享导致很多问题，所以为了隔离每个`Job`所需要的资源，`Flink`还提供了单作业模式。
 
-单作业模式中，为每个提交的Job创建一个集群，由客户端执行main()方法，解析出DataFlowGraph和JobGraph，然后启动集群，并将解析出来的Job提交给JobManager，进而分发给TaskManager执行。Job 执行完成后，集群就会关闭，该集群的资源就会释放出来。
+单作业模式中，为每个提交的`Job`创建一个集群，由客户端执行`main()`方法，解析出`DataFlowGraph`和`JobGraph`，然后启动集群，并将解析出来的`Job`提交给`JobManager`，进而分发给`TaskManager`执行。`Job `执行完成后，集群就会关闭，该集群的资源就会释放出来。
 
-单作业模式中，每个Job都有自己的JobManager管理，占用独享的资源，即使发生故障，也不会影响其他作业的运行。
+单作业模式中，每个`Job`都有自己的`JobManager`管理，占用独享的资源，即使发生故障，也不会影响其他作业的运行。
 
-需要注意的是，Flink本身无法直接这样运行，所以单作业模式一般都需要借助一些资源调度框架来启动集群，如，YARN、Kubernetes等。
+需要注意的是，`Flink`本身无法直接这样运行，所以单作业模式一般都需要借助一些资源调度框架来启动集群，如，`YARN`、`Kubernetes`等。
 
-### 2.1.3 应用模式（Application Mode）
+### 2.1.3 应用模式（`Application Mode`）
 
-会话模式和单作业模式下，应用代码都是在Client中执行，然后将执行的二进制数据和相关依赖提交给JobManager。这种方式存在的问题是，Client需要占用大量的网络带宽，去下载依赖和将二进制数据发送给JobManager，并且很多情况下提交Job用的都是同一个Client，这样就会加重Client所在节点的资源消耗。
+会话模式和单作业模式下，应用代码都是在`Client`中执行，然后将执行的二进制数据和相关依赖提交给`JobManager`。这种方式存在的问题是，`Client`需要占用大量的网络带宽，去下载依赖和将二进制数据发送给`JobManager`，并且很多情况下提交`Job`用的都是同一个`Client`，这样就会加重`Client`所在节点的资源消耗。
 
-Flink解决这个问题的思路就是：把产生问题的组件干掉，把Client干掉，直接把Application提交到JobManager上运行，进而解析出DataGraph和JobGraph。除此之外，应用模式与单作业模式没有区别，都是提交Job之后才创建集群，单作业模式使用Client执行代码并提交Job，应用模式直接由JobManager执行应用程序，即使Application包含多个Job，也只创建一个集群。
+`Flink`解决这个问题的思路就是：把产生问题的组件干掉，把`Client`干掉，直接把`Application`提交到`JobManager`上运行，进而解析出`DataGraph`和`JobGraph`。除此之外，应用模式与单作业模式没有区别，都是提交`Job`之后才创建集群，单作业模式使用`Client`执行代码并提交`Job`，应用模式直接由`JobManager`执行应用程序，即使`Application`包含多个`Job`，也只创建一个集群。
 
 ## 2.2、运行模式
 
-==**本文档所使用Flink版本为Flink 1.13**==
+==**本文档所使用`Flink`版本为`Flink 1.13`**==
 
-### 2.2.1 Local模式（本地模式）
+### 2.2.1 `Local`模式（本地模式）
 
-Local模式部署非常简单，直接下载并解压Flink安装包即可，不用行进额外的配置。因此，Local模式下，Flink的数据均存储在本地。
+`Local`模式部署非常简单，直接下载并解压Flink`安装`包即可，不用行进额外的配置。因此，`Local`模式下，`Flink`的数据均存储在本地。
 
-**Local模式的部署只需要一台节点，以下以Hadoop132节点为例，介绍部署步骤：**
+**`Local`模式的部署只需要一台节点，以下以`Hadoop132`节点为例，介绍部署步骤：**
 
--   **使用xftp工具将Flink压缩包flink-1.13.0-bin-scala_2.12.tgz上传到/opt/software目录下**
+-   **使用`xftp`工具将Flink压缩包`Flink-1.13.0-bin-scala_2.12.tgz`上传到`/opt/software`目录下**
 
--   **解压到/opt/moudle目录下：`tar -zxvf /opt/software/flink-1.13.0-bin-scala_2.12.tgz -C /opt/module/`**
+-   **解压到`/opt/moudle`目录下：`tar -zxvf /opt/software/Flink-1.13.0-bin-scala_2.12.tgz -C /opt/module/`**
 
--   **对flink解压包进行重命名，添加-local后缀，表示Local运行模式：`mv /opt/software/flink-1.13.0/ /opt/module/flink-1.13.0-local`**
+-   **对`Flink`解压包进行重命名，添加`-local`后缀，表示`Local`运行模式：`mv /opt/software/Flink-1.13.0/ /opt/module/Flink-1.13.0-local`**
 
 -   **配置环境变量：`vim /etc/profile.d/my_env.sh`**
 
     ```txt
-    #FLINK_HOME
-    export FLINK_HOME=/opt/module/flink-1.13.0-local
-    export PATH=$PATH:$FLINK_HOME/bin
+    #`Flink`_HOME
+    export `Flink`_HOME=/opt/module/`Flink`-1.13.0-local
+    export PATH=$PATH:$`Flink`_HOME/bin
     ```
 
 -   **执行文件，让环境变量生效：`source /etc/profile`**
 
--   **执行命令，启动Flink Local模式：`start-cluster.sh`。`start-cluster.sh`脚本将会依次启动以下服务：**
+-   **执行命令，启动`Flink Local`模式：`start-cluster.sh`。`start-cluster.sh`脚本将会依次启动以下服务：**
 
     ```bash
     [justlancer@hadoop132 ~]$ start-cluster.sh 
@@ -78,7 +78,7 @@ Local模式部署非常简单，直接下载并解压Flink安装包即可，不�
     Starting taskexecutor daemon on host hadoop132.
     ```
 
--   **hadoop132节点此时应该运行的服务有：**
+-   **`hadoop132`节点此时应该运行的服务有：**
 
     ```txt
     ============== hadoop132 =================
@@ -93,38 +93,38 @@ Local模式部署非常简单，直接下载并解压Flink安装包即可，不�
 
 -   **此时访问`hadoop132:8081`可以对Flink进行监控和任务提交**![image-20230227142736371](./03-Flink.assets/image-20230227142736371.png)
 
--   **执行命令，停止Flink Local模式：`stop-cluster.sh`**
+-   **执行命令，停止`Flink Local`模式：`stop-cluster.sh`**
 
-### 2.2.2 Standalone模式（独立部署模式）
+### 2.2.2 `Standalone`模式（独立部署模式）
 
-Standalone模式是一种独立运行的集群模式，这种模式下，Flink不依赖任何外部的资源管理平台，集群的资源调度、数据处理、容错机制和一致性检查点等都由集群自己管理。Standalone模式的优点是，不需要任何外部组件，缺点也很明显，当集群资源不足或者出现故障，由于没有故障自动转移和资源自动调配，需要手动处理，会导致Flink任务失败。
+`Standalone`模式是一种独立运行的集群模式，这种模式下，`Flink`不依赖任何外部的资源管理平台，集群的资源调度、数据处理、容错机制和一致性检查点等都由集群自己管理。`Standalone`模式的优点是，不需要任何外部组件，缺点也很明显，当集群资源不足或者出现故障，由于没有故障自动转移和资源自动调配，需要手动处理，会导致`Flink`任务失败。
 
-区别于Local模式，Standalone模式需要进行集群配置，配置集群JobManager节点和TaskManager节点。
+区别于`Local`模式，`Standalone`模式需要进行集群配置，配置集群`JobManager`节点和`TaskManager`节点。
 
-Flink集群规划
+`Flink`集群规划
 
-|  hadoop132  |  hadoop133  |  hadoop134  |
-| :---------: | :---------: | :---------: |
-| JobManager  |    **—**    |    **—**    |
-| TaskManager | TaskManager | TaskManager |
+|  `hadoop132`  |  `hadoop133`  |  `hadoop134`  |
+| :-----------: | :-----------: | :-----------: |
+| `JobManager`  |     **—**     |     **—**     |
+| `TaskManager` | `TaskManager` | `TaskManager` |
 
--   **再解压一份Flink解压包：`tar -zxvf /opt/software/flink-1.13.0-bin-scala_2.12.tgz -C /opt/module/`**
+-   **再解压一份`Flink`解压包：`tar -zxvf /opt/software/Flink-1.13.0-bin-scala_2.12.tgz -C /opt/module/`**
 
--   **对Flink解压包进行重命名，添加-standalone后缀，表示Standalone运行模式：`mv /opt/module/flink-1.13.0 /opt/module/flink-1.13.0-standalone`**
+-   **对`Flink`解压包进行重命名，添加`-standalone`后缀，表示Standalone运行模式：`mv /opt/module/Flink-1.13.0 /opt/module/Flink-1.13.0-standalone`**
 
--   **修改之前的FLINK_HOME环境变量：`vim /etc/profile.d/my_env.sh` **
+-   **修改之前的`Flink_HOME`环境变量：`vim /etc/profile.d/my_env.sh` **
 
     ```txt
-    #FLINK_HOME
-    export FLINK_HOME=/opt/module/flink-1.13.0-standalone
-    export PATH=$PATH:$FLINK_HOME/bin
+    #`Flink`_HOME
+    export `Flink`_HOME=/opt/module/`Flink`-1.13.0-standalone
+    export PATH=$PATH:$`Flink`_HOME/bin
     ```
 
 -   **执行命令，使环境变量生效：`source /etc/profile`**
 
--   **JobManager节点配置：`vim /opt/module/flink-1.13.0-standalone/conf/flink-conf.yaml`**![image-20230227151242157](./03-Flink.assets/image-20230227151242157.png)
+-   **`JobManager`节点配置：`vim /opt/module/Flink-1.13.0-standalone/conf/Flink-conf.yaml`**![image-20230227151242157](./03-Flink.assets/image-20230227151242157.png)
 
--   **TaskManager节点配置：`vim /opt/module/flink-1.13.0-standalone/conf/workers`**
+-   **`TaskManager`节点配置：`vim /opt/module/Flink-1.13.0-standalone/conf/workers`**
 
     ```txt
     hadoop132
@@ -132,21 +132,21 @@ Flink集群规划
     hadoop134
     ```
 
--   **分发flink-1.13.0-standalone目录：`xsync /opt/module/flink-1.13.0-standalone/`**
+-   **分发`Flink-1.13.0-standalone`目录：`xsync /opt/module/Flink-1.13.0-standalone/`**
 
--   **在hadoop133、hadoop134节点中配置环境变量：`vim /etc/profile.d/my_env.sh`**
+-   **在`hadoop133`、`hadoop134`节点中配置环境变量：`vim /etc/profile.d/my_env.sh`**
 
     ```txt
-    #FLINK_HOME
-    export FLINK_HOME=/opt/module/flink-1.13.0-standalone
-    export PATH=$PATH:$FLINK_HOME/bin
+    #`Flink`_HOME
+    export `Flink`_HOME=/opt/module/`Flink`-1.13.0-standalone
+    export PATH=$PATH:$`Flink`_HOME/bin
     ```
 
-**==至此，Flink Standalone运行模式已经配置完成，下面将进行集群启动和停止==**
+**==至此，`Flink Standalone`运行模式已经配置完成，下面将进行集群启动和停止==**
 
-#### 2.2.2.1 Standalone运行模式下的会话模式（Standalone - Session模式）
+#### 2.2.2.1 `Standalone`运行模式下的会话模式（`Standalone - Session`模式）
 
--   **来到JobManager服务所在的hadoop132节点，执行命令，启动Flink Standalone运行模式的会话模式：`start-cluster.sh`。`start-cluster.sh`脚本将依次启动以下服务：**
+-   **来到`JobManager`服务所在的`hadoop132`节点，执行命令，启动`Flink Standalone`运行模式的会话模式：`start-cluster.sh`。`start-cluster.sh`脚本将依次启动以下服务：**
 
     ```txt
     [justlancer@hadoop132 ~]$ start-cluster.sh 
@@ -172,33 +172,33 @@ Flink集群规划
     1407 TaskManagerRunner
     ```
 
-    >   **==注意一：`start-cluster.sh`脚本将在<u>本地节点</u>启动一个JobManager，并通过ssh连接到workers文件中所有的worker节点，在每一个节点上启动TaskManager。因此，在`flink-conf.yaml`配置文件中，配置项`jobmanager.rpc.address`所指定的JobManager所在节点并不是实际的JobManager所在的节点，而是`start-cluster.sh`脚本执行的节点才是JobManager服务所在的节点。==**
+    >   **==注意一：`start-cluster.sh`脚本将在<u>本地节点</u>启动一个JobManager，并通过ssh连接到workers文件中所有的worker节点，在每一个节点上启动TaskManager。因此，在`Flink-conf.yaml`配置文件中，配置项`jobmanager.rpc.address`所指定的JobManager所在节点并不是实际的JobManager所在的节点，而是`start-cluster.sh`脚本执行的节点才是JobManager服务所在的节点。==**
     >
     >   **==注意二：在虚拟机上操作时，如果在测试了Local模式后，立刻进行Standalone模式的部署，在执行`start-cluster.sh`脚本时，可能会出现启动的仍旧是Local模式的Flink服务，而不是Standalone模式的Flink集群，即使你的环境变量配置的没有问题。出现这个问题的原因不清楚，解决这个问题的方法是，重启虚拟机即可。==**
 
--   **访问`hadoop132:8081`，进入Standalone模式的Web UI，对Flink集群进行监控**![image-20230228103044465](./03-Flink.assets/image-20230228103044465.png)
+-   **访问`hadoop132:8081`，进入`Standalone`模式的`Web UI`，对`Flink`集群进行监控**![image-20230228103044465](./03-Flink.assets/image-20230228103044465.png)
 
--   **执行命令，停止Standalone - Session模式的Flink集群：`stop-cluster.sh`**
+-   **执行命令，停止`Standalone - Session`模式的`Flink`集群：`stop-cluster.sh`**
 
 >   **Standalone运行模式下没有单作业部署模式，一方面，Flink本身无法直接以单作业模式启动集群，需要借助资源调度组件；另一方面，Flink本身也没有提供相应的脚本启动单作业模式。**
 
-#### 2.2.2.2 Standalone运行模式下的应用模式（Standalone - Application模式）
+#### 2.2.2.2 `Standalone`运行模式下的应用模式（`Standalone - Application`模式）
 
-正如前面对应用模式的介绍，应用模式下，直接将Application提交到JobManager上运行，进而解析出DataFlowGraph和JobGraph。应用模式下，需要为每一个Application创建一个Flink集群，进而开启一个JobManager。当该JobManager执行结束后，该Flink集群也就关闭了。
+正如前面对应用模式的介绍，应用模式下，直接将`Application`提交到`JobManager`上运行，进而解析出`DataFlowGraph`和`JobGraph`。应用模式下，需要为每一个`Application`创建一个`Flink`集群，进而开启一个`JobManager`。当该`JobManager`执行结束后，该`Flink`集群也就关闭了。
 
-因此，应用模式下，当开启Flink集群时，必需要向Flink提供包含Application的jar包。
+因此，应用模式下，当开启`Flink`集群时，必需要向`Flink`提供包含`Application`的`jar`包。
 
--   **利用xftp组件，将已经写好的Flink应用——WordCount提交到/opt/module/flink-1.13.0-standalone/lib目录下**
+-   **利用`xftp`组件，将已经写好的`Flink`应用——`WordCount`提交到/opt/module/Flink-1.13.0-standalone/lib目录下**
 
     ```java
-    import org.apache.flink.api.common.functions.FlatMapFunction;
-    import org.apache.flink.api.java.functions.KeySelector;
-    import org.apache.flink.api.java.tuple.Tuple2;
-    import org.apache.flink.streaming.api.datastream.DataStreamSource;
-    import org.apache.flink.streaming.api.datastream.KeyedStream;
-    import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
-    import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-    import org.apache.flink.util.Collector;
+    import org.apache.`Flink`.api.common.functions.FlatMapFunction;
+    import org.apache.`Flink`.api.java.functions.KeySelector;
+    import org.apache.`Flink`.api.java.tuple.Tuple2;
+    import org.apache.`Flink`.streaming.api.datastream.DataStreamSource;
+    import org.apache.`Flink`.streaming.api.datastream.KeyedStream;
+    import org.apache.`Flink`.streaming.api.datastream.SingleOutputStreamOperator;
+    import org.apache.`Flink`.streaming.api.environment.StreamExecutionEnvironment;
+    import org.apache.`Flink`.util.Collector;
     
     /**
      * Author: shaco
@@ -251,70 +251,70 @@ Flink集群规划
     }
     ```
 
--   **在hadoop132节点执行命令启动 JobManager：`standalone-job.sh start --job-classname D1_WorldCount_Bounded`。此处D1_WorldCount_Bounded为Flink Application的全类名。**
+-   **在`hadoop132`节点执行命令启动 `JobManager`：`standalone-job.sh start --job-classname D1_WorldCount_Bounded`。此处`D1_WorldCount_Bounded`为`Flink Application`的全类名。**
 
--   **访问`hadoop132:8081`，可以看到Application已经提交并处于Running状态，但此时数据并没有执行，原因是没有TaskManager服务启动。**
+-   **访问`hadoop132:8081`，可以看到`Application`已经提交并处于`Running`状态，但此时数据并没有执行，原因是没有`TaskManager`服务启动。**
 
->   **由于WordCount应用是有限流数据处理，在启动TaskManager后，任务就会开始执行，当任务执行结束后JobManager就会自动停止并释放资源，此时就看不到Web UI了。**
+>   **由于`WordCount`应用是有限流数据处理，在启动`TaskManager`后，任务就会开始执行，当任务执行结束后`JobManager`就会自动停止并释放资源，此时就看不到`Web UI`了。**
 
--   **可以在hadoop132、hadoop133、hadoop134中的任意一个节点上启动TaskManager：`taskmanager.sh start`**
--   **当启动了TaskManager后，任务将很快执行完成，JobManager就会释放资源，此时需要手动停止TaskManager：`taskmanager.sh stop`**
+-   **可以在`hadoop132`、`hadoop133`、`hadoop134`中的任意一个节点上启动`TaskManager`：`taskmanager.sh start`**
+-   **当启动了`TaskManager`后，任务将很快执行完成，`JobManager`就会释放资源，此时需要手动停止`TaskManager`：`taskmanager.sh stop`**
 
->   **==需要注意的是，当JobManager长时间等不到TaskManager启动，获取不到任务执行的资源，那么JobManager会自动关闭。==**
+>   **==需要注意的是，当`JobManager`长时间等不到`TaskManager`启动，获取不到任务执行的资源，那么`JobManager`会自动关闭。==**
 >
->   **==手动关闭JobManager：`standalone-job.sh stop --job-classname <Flink Application的全类名>`==**
+>   **==手动关闭`JobManager：standalone-job.sh stop --job-classname <Flink Application的全类名>`==**
 
-#### 2.2.2.3 Standalone运行模式的高可用部署（Standalone - HA模式）
+#### 2.2.2.3 `Standalone`运行模式的高可用部署（`Standalone - HA`模式）
 
-Standalone的HA模式是通过在集群中配置并运行多个JobManager的方式避免出现单点故障的问题。
+`Standalone`的`HA`模式是通过在集群中配置并运行多个`JobManager`的方式避免出现单点故障的问题。
 
--   **修改`/opt/module/flink-1.13.0-standalone/conf/flink-conf.yaml`文件，增加配置：**
+-   **修改`/opt/module/Flink-1.13.0-standalone/conf/Flink-conf.yaml`文件，增加配置：**
 
     ```txt
     high-availability: zookeeper
     # 该配置项需要指定namenode的内部通信端口，需要与hdfs-site.xml中的配置项保持同步
-    high-availability.storageDir: hdfs://hadoop132:8020/flink/standalone/ha
+    high-availability.storageDir: hdfs://hadoop132:8020/`Flink`/standalone/ha
     # 配置Zookeeper集群的连接地址，其端口号也需要和配置文件中的保持一致
     high-availability.zookeeper.quorum: hadoop132:2181,hadoop133:2181,hadoop134:2181
-    high-availability.zookeeper.path.root: /flink-standalone
-    high-availability.cluster-id: /cluster_justlancer_flink
+    high-availability.zookeeper.path.root: /`Flink`-standalone
+    high-availability.cluster-id: /cluster_justlancer_`Flink`
     ```
 
--   **修改配置文件`/opt/module/flink-1.13.0-standalone/conf/masters`，配置JobManager服务所在节点的列表：**
+-   **修改配置文件`/opt/module/Flink-1.13.0-standalone/conf/masters`，配置JobManager服务所在节点的列表：**
 
     ```txt
     hadoop132:8081
     hadoop133:8081
     ```
 
--   **分发修改后的配置文件：`xsync /opt/module/flink-1.13.0-standalone/conf/flink-conf.yaml`，`xsync /opt/module/flink-1.13.0-standalone/conf/masters`**
+-   **分发修改后的配置文件：`xsync /opt/module/Flink-1.13.0-standalone/conf/Flink-conf.yaml`，`xsync /opt/module/Flink-1.13.0-standalone/conf/masters`**
 
->   **注意，Standalone - HA模式需要使用Zookeeper集群进行状态监控，同时，需要Hadoop集群存储数据。本次测试使用的Hadoop集群，HDFS和YARN均为高可用部署，其部署步骤与Zookeeper部署步骤参见`Hadoop_HDFS&YARN_HA部署文档.md`**
+>   **注意，`Standalone - HA`模式需要使用`Zookeeper`集群进行状态监控，同时，需要`Hadoop`集群存储数据。本次测试使用的`Hadoop`集群，`HDFS`和`YARN`均为高可用部署，其部署步骤与`Zookeeper`部署步骤参见`Hadoop_HDFS&YARN_HA部署文档.md`**
 
->   **注意：在Flink 1.8.0版本之前，Flink如果需要使用Hadoop的相关组件，那么需要安装Hadoop进行支持。从Flink 1.8版本开始，Flink不再提供基于Hadoop编译的安装包，如果需要Hadoop环境支持，需要自行在官网上下载Hadoop相关本版的组件，例如需要Hadoop 2.7.5环境的支持，需要下载`flink-shaded-hadoop-2-uber-2.7.5-10.0.jar`等类似的jar包，并将该jar包上传至Flink的lib目录下。在Flink 1.11.0版本之后，增加了很多重要的新特性，其中就包括增加了对Hadoop 3.0.0以及更高版本的支持，不再提供相关Hadoop编译的安装包，而是通过配置环境变量完成与Hadoop的集成。**
+>   **注意：在`Flink 1.8.0`版本之前，`Flink`如果需要使用`Hadoop`的相关组件，那么需要安装`Hadoop`进行支持。从`Flink 1.8`版本开始，`Flink`不再提供基于`Hadoop`编译的安装包，如果需要`Hadoop`环境支持，需要自行在官网上下载`Hadoop`相关本版的组件，例如需要`Hadoop 2.7.5`环境的支持，需要下载`Flink-shaded-hadoop-2-uber-2.7.5-10.0.jar`等类似的`jar`包，并将该`jar`包上传至`Flink`的`lib`目录下。在`Flink 1.11.0`版本之后，增加了很多重要的新特性，其中就包括增加了对`Hadoop 3.0.0`以及更高版本的支持，不再提供相关`Hadoop`编译的安装包，而是通过配置环境变量完成与`Hadoop`的集成。**
 >
->   **本次测试过程中，Flink版本为Flink 1.13，Hadoop版本为Hadoop 3.1.3，而Standalone - HA模式需要使用HDFS服务，因此需要对环境变量`HADOOP_HOME`添加额外的配置。**
+>   **本次测试过程中，`Flink`版本为`Flink 1.13`，`Hadoop`版本为`Hadoop 3.1.3`，而`Standalone - HA`模式需要使用`HDFS`服务，因此需要对环境变量`HADOOP_HOME`添加额外的配置。**
 
--   **对环境变量`HADOOP_HOME`进行补充配置，hadoop132、hadoop133、hadoop134均需要配置：`vim /etc/profile.d/my_env.sh`**
+-   **对环境变量`HADOOP_HOME`进行补充配置，`hadoop132`、`hadoop133`、`hadoop134`均需要配置：`vim /etc/profile.d/my_env.sh`**
 
     ```txt
     #HAOODP_HOME
     export HADOOP_HOME=/opt/module/hadoop-3.1.3-ha
     export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
-    # 以下两个环境变量为Flink集成Hadoop环境所需要的环境变量
+    # 以下两个环境变量为`Flink`集成Hadoop环境所需要的环境变量
     export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
     export HADOOP_CLASSPATH=`hadoop classpath`
     ```
 
 -   **执行文件，使环境变量生效：`source /etc/profile`**
 
--   **启动Zookeeper集群：`zk_mine.sh start`**
+-   **启动`Zookeeper`集群：`zk_mine.sh start`**
 
--   **启动Hadoop HA集群，HDFS HA集群一定要启动，YARN HA可以不用启动，暂时用不到：`start-dfs.sh`**
+-   **启动`Hadoop HA`集群，`HDFS HA`集群一定要启动，`YARN HA`可以不用启动，暂时用不到：`start-dfs.sh`**
 
->   **==注意：以下进行Standalone HA集群的启动，其本质是Standalone - Session模式的高可用配置，是在Standalone - Session模式的基础上，对JobManager进行了HA配置。对于Standalone - Application模式，没有HA配置，原因在于Standalone - Application模式是在Application提交之后才创建Flink集群的。在没有资源调度框架的支持下，无法实现JobManager的HA配置。==**
+>   **==注意：以下进行`Standalone HA`集群的启动，其本质是`Standalone - Session`模式的高可用配置，是在`Standalone - Session`模式的基础上，对`JobManager`进行了`HA`配置。对于`Standalone - Application`模式，没有`HA`配置，原因在于`Standalone - Application`模式是在`Application`提交之后才创建`Flink`集群的。在没有资源调度框架的支持下，无法实现`JobManager`的HA配置。==**
 
--   **启动Standalone HA集群：`start-cluster.sh`，此时，各节点启动服务如下：**
+-   **启动`Standalone HA`集群：`start-cluster.sh`，此时，各节点启动服务如下：**
 
     ```bash
     [justlancer@hadoop132 ~]$ start-cluster.sh 
@@ -354,39 +354,39 @@ Standalone的HA模式是通过在集群中配置并运行多个JobManager的方�
     2527 Jps
     ```
 
--   **访问Flink的Web UI，访问`hadoop132:8081`，或者`hadoop133:8081`均看到Flink的Web页面，均可在页面上提交任务以及监控任务运行状态。如果需要查看哪个节点为leader，那么需要查看Zookeeper的节点信息。**![image-20230228165230194](./03-Flink.assets/image-20230228165230194.png)![image-20230228165253197](./03-Flink.assets/image-20230228165253197.png)
+-   **访问`Flink`的`Web UI`，访问`hadoop132:8081`，或者`hadoop133:8081`均看到`Flink`的`Web`页面，均可在页面上提交任务以及监控任务运行状态。如果需要查看哪个节点为`leader`，那么需要查看`Zookeeper`的节点信息。**![image-20230228165230194](./03-Flink.assets/image-20230228165230194.png)![image-20230228165253197](./03-Flink.assets/image-20230228165253197.png)
 
--   **在Zookeeper中查看JobManager的主备信息：**
+-   **在`Zookeeper`中查看`JobManager`的主备信息：**
 
-    -   **登录Zookeeper：`zkCli.sh -server hadoop132:2181`**
+    -   **登录`Zookeeper：zkCli.sh -server hadoop132:2181`**
 
-    -   **查看/flink-standalone节点下的信息：`get /flink-standalone/cluster_justlancer_flink/leader/rest_server_lock`**
+    -   **查看`/Flink-standalone`节点下的信息：`get /Flink-standalone/cluster_justlancer_Flink/leader/rest_server_lock`**
 
         ```txt
-        [zk: hadoop132:2181(CONNECTED) 7] get /flink-standalone/cluster_justlancer_flink/leader/rest_server_lock
+        [zk: hadoop132:2181(CONNECTED) 7] get /`Flink`-standalone/cluster_justlancer_`Flink`/leader/rest_server_lock
         ��whttp://hadoop132:8081srjava.util.UUID����m�/J
                                                         leastSigBitsJ
                                                                      mostSigBitsxp��&U|�ɡ
         ���E7
         ```
 
--   **停止Standclone - HA模式：`stop-cluster.sh`**
+-   **停止`Standclone - HA`模式：`stop-cluster.sh`**
 
--   **停止HDFS集群：`stop-dfs.sh`**
+-   **停止`HDFS`集群：`stop-dfs.sh`**
 
--   **停止zookeeper集群：`zk_mine.sh stop`**
+-   **停止`zookeeper`集群：`zk_mine.sh stop`**
 
-### 2.2.3 YARN模式
+### 2.2.3 `YARN`模式
 
-Standalone模式由Flink自身提供资源调度，无需其他框架，但存在的问题是，当集群资源不够时，Flink任务提交就会失败，需要进行手动的资源扩充。
+`Standalone`模式由`Flink`自身提供资源调度，无需其他框架，但存在的问题是，当集群资源不够时，`Flink`任务提交就会失败，需要进行手动的资源扩充。
 
-另一方面，Flink是大数据计算框架，不是资源调度框架，在需要的时候，只需要和现有的资源调度框架进行集成就好，将专业的事情交给专业的框架来做。
+另一方面，`Flink`是大数据计算框架，不是资源调度框架，在需要的时候，只需要和现有的资源调度框架进行集成就好，将专业的事情交给专业的框架来做。
 
-目前，国内使用最为广泛的资源调度框架是YARN，国外使用较为广泛的资源框架是MESOS。还有使用Kubernetes（k8s）进行的容器化部署。以下介绍Flink集成YARN是如何进行集群部署的。
+目前，国内使用最为广泛的资源调度框架是`YARN`，国外使用较为广泛的资源框架是`MESOS`。还有使用`Kubernetes（k8s）`进行的容器化部署。以下介绍Flink集成`YARN`是如何进行集群部署的。
 
-**注意：以下所使用的Hadoop集群是HA部署模式**
+**注意：以下所使用的`Hadoop`集群是`HA`部署模式**
 
->   **正如上面所说，在Flink 1.11版本之后，如果Flink需要集成Hadoop的服务，那么不需要下载相关的Hadoop组件jar包，只需要通过环境变量的配置即可实现Flink对Hadoop环境的依赖。**
+>   **正如上面所说，在`Flink 1.11`版本之后，如果`Flink`需要集成`Hadoop`的服务，那么不需要下载相关的`Hadoop`组件jar包，只需要通过环境变量的配置即可实现`Flink`对`Hadoop`环境的依赖。**
 >
 >   **因此，一定要在有Flink服务的节点配置Hadoop的环境变量：**
 >
@@ -394,51 +394,51 @@ Standalone模式由Flink自身提供资源调度，无需其他框架，但存�
 >   #HAOODP_HOME
 >   export HADOOP_HOME=/opt/module/hadoop-3.1.3-ha
 >   export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
->   # 以下两个环境变量为Flink集成Hadoop环境所需要的环境变量
+>   # 以下两个环境变量为`Flink`集成Hadoop环境所需要的环境变量
 >   export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
 >   export HADOOP_CLASSPATH=`hadoop classpath`
 >   ```
 
-Flink YARN运行模式前置准备工作：
+`Flink YARN`运行模式前置准备工作：
 
--   **同样，再解压一份Flink解压包：`tar -zxvf /opt/software/flink-1.13.0-bin-scala_2.12.tgz -C /opt/module/`**
+-   **同样，再解压一份`Flink`解压包：`tar -zxvf /opt/software/Flink-1.13.0-bin-scala_2.12.tgz -C /opt/module/`**
 
--   **对Flink解压包进行重命名，添加-yarn后缀，表示YARN运行模式：`mv /opt/module/flink-1.13.0 /opt/module/flink-1.13.0-yarn`**
+-   **对`Flink`解压包进行重命名，添加`-yarn`后缀，表示`YARN`运行模式：`mv /opt/module/Flink-1.13.0 /opt/module/Flink-1.13.0-yarn`**
 
--   **修改之前的FLINK_HOME环境变量：`vim /etc/profile.d/my_env.sh`**
+-   **修改之前的`Flink_HOME`环境变量：`vim /etc/profile.d/my_env.sh`**
 
     ```txt
-    #FLINK_HOME
-    export FLINK_HOME=/opt/module/flink-1.13.0-yarn
-    export PATH=$PATH:$FLINK_HOME/bin
+    #`Flink`_HOME
+    export `Flink`_HOME=/opt/module/`Flink`-1.13.0-yarn
+    export PATH=$PATH:$`Flink`_HOME/bin
     ```
 
--   **配置上述Hadoop的环境变量：`vim  /etc/profile.d/my_env.sh`**
+-   **配置上述`Hadoop`的环境变量：`vim  /etc/profile.d/my_env.sh`**
 
     ```txt
     #HAOODP_HOME
     export HADOOP_HOME=/opt/module/hadoop-3.1.3-ha
     export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
-    # 以下两个环境变量为Flink集成Hadoop环境所需要的环境变量
+    # 以下两个环境变量为`Flink`集成Hadoop环境所需要的环境变量
     export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
     export HADOOP_CLASSPATH=`hadoop classpath`
     ```
 
 -   **执行文件，使环境变量生效：`source /etc/profile`**
 
-**==Flink YARN运行模式不需要修改其他配置文件==**
+**==`Flink YARN`运行模式不需要修改其他配置文件==**
 
-#### 2.2.3.1 YARN运行模式下的会话模式（YARN - Session模式）
+#### 2.2.3.1 `YARN`运行模式下的会话模式（`YARN - Session`模式）
 
-不同于YARN的其他模式，YARN -Session模式需要先启动一个YARN会话，进而在会话中来启动Flink集群。
+不同于`YARN`的其他模式，`YARN -Session`模式需要先启动一个`YARN`会话，进而在会话中来启动Flink集群。
 
--   **启动Zookeeper集群：`zk_mine.sh start`**
+-   **启动`Zookeeper`集群：`zk_mine.sh start`**
 
--   **启动HDFS HA集群：`start-dfs.sh`**
+-   **启动`HDFS HA`集群：`start-dfs.sh`**
 
--   **启动YARN HA集群：`start-yarn.sh`**
+-   **启动`YARN HA`集群：`start-yarn.sh`**
 
--   **向YARN集群申请资源，开启YARN会话，进而会自动启动Flink集群：`yarn-session.sh -nm test`**
+-   **向`YARN`集群申请资源，开启`YARN`会话，进而会自动启动`Flink`集群：`yarn-session.sh -nm test`**
 
     ```txt
     # 参数说明
@@ -450,82 +450,82 @@ Flink YARN运行模式前置准备工作：
     -qu(--queue)				指定YARN队列名称		
     ```
 
-    >   **在Flink 1.11.0版本之前可以使用-n参数和-s参数分别指定TaskManager数量和Slot数量。从Flink 1.11.0版本开始，便不再使用-n参数和-s参数。YARN会按照需求，动态分配TaskManager和Slot。所以YARN - Session模式是动态分配资源的。**
+    >   **在`Flink 1.11.0`版本之前可以使用`-n`参数和`-s`参数分别指定`TaskManager`数量和`Slot`数量。从`Flink 1.11.0`版本开始，便不再使用`-n`参数和`-s`参数。`YARN`会按照需求，动态分配`TaskManager`和`Slot`。所以`YARN - Session`模式是动态分配资源的。**
 
--   **YARN - Session启动后，会给出一个Web UI地址以及一个YARN Application ID**
+-   **`YARN - Session`启动后，会给出一个`Web UI`地址以及一个`YARN Application ID`**
 
     ```txt
     ......
-    2023-03-01 10:15:44,724 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Submitting application master application_1677636908998_0001
+    2023-03-01 10:15:44,724 INFO  org.apache.`Flink`.yarn.YarnClusterDescriptor                  [] - Submitting application master application_1677636908998_0001
     2023-03-01 10:15:45,052 INFO  org.apache.hadoop.yarn.client.api.impl.YarnClientImpl        [] - Submitted application application_1677636908998_0001
-    2023-03-01 10:15:45,053 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Waiting for the cluster to be allocated
-    2023-03-01 10:15:45,056 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Deploying cluster, current state ACCEPTED
-    2023-03-01 10:15:52,417 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - YARN application has been deployed successfully.
-    2023-03-01 10:15:52,418 INFO  org.apache.flink.yarn.YarnClusterDescriptor                  [] - Found Web Interface hadoop132:36564 of application 'application_1677636908998_0001'.
+    2023-03-01 10:15:45,053 INFO  org.apache.`Flink`.yarn.YarnClusterDescriptor                  [] - Waiting for the cluster to be allocated
+    2023-03-01 10:15:45,056 INFO  org.apache.`Flink`.yarn.YarnClusterDescriptor                  [] - Deploying cluster, current state ACCEPTED
+    2023-03-01 10:15:52,417 INFO  org.apache.`Flink`.yarn.YarnClusterDescriptor                  [] - YARN application has been deployed successfully.
+    2023-03-01 10:15:52,418 INFO  org.apache.`Flink`.yarn.YarnClusterDescriptor                  [] - Found Web Interface hadoop132:36564 of application 'application_1677636908998_0001'.
     JobManager Web Interface: http://hadoop132:36564
     ```
 
--   **开启YARN - Session会话后，就可以通过命令行或者Flink Web UI进行作业提交**
+-   **开启`YARN - Session`会话后，就可以通过命令行或者`Flink Web UI`进行作业提交**
 
->   **==Flink 作业提交方式和过程将在最后进行介绍。==**
+>   **==`Flink `作业提交方式和过程将在最后进行介绍。==**
 
--   **YARN - Session会话的关闭：**
-    -   **当YARN - Session会话前台启动时，直接关闭前台会话即可停止YARN - Session**
-    -   **当使用-d参数，使YARN - Session会话后台启动时，使用命令可以停止YARN - Session会话：`echo "stop" | yarn-session.sh -id application_XXXXX_XXX`。其中，`application_XXXXX_XXX`为YARN Application ID**
+-   **`YARN - Session`会话的关闭：**
+    -   **当`YARN - Session`会话前台启动时，直接关闭前台会话即可停止`YARN - Session`**
+    -   **当使用`-d`参数，使`YARN - Session`会话后台启动时，使用命令可以停止`YARN - Session`会话：`echo "stop" | yarn-session.sh -id application_XXXXX_XXX`。其中，`application_XXXXX_XXX`为`YARN Application ID`**
 
 
-#### 2.2.3.2 YARN运行模式下的单作业模式（YARN - Per Job模式）
+#### 2.2.3.2 `YARN`运行模式下的单作业模式（`YARN - Per Job`模式）
 
-在集成了Hadoop环境之后，可以使用YARN进行资源调度，所以可以部署YARN运行模式的单作业部署模式。
+在集成了`Hadoop`环境之后，可以使用`YARN`进行资源调度，所以可以部署`YARN`运行模式的单作业部署模式。
 
-YARN运行模式的单作业部署模式无需额外的配置，通过不同的脚本命令即可启动Flink集群。
+`YARN`运行模式的单作业部署模式无需额外的配置，通过不同的脚本命令即可启动`Flink`集群。
 
--   **利用xftp工具将需要执行的Flink应用jar包上传到/opt/module/flink-1.13.0-yarn/lib目录下。本次测试，依然使用上面的WordCount示例。**
+-   **利用`xftp`工具将需要执行的`Flink`应用`jar`包上传到`/opt/module/Flink-1.13.0-yarn/lib`目录下。本次测试，依然使用上面的`WordCount`示例。**
 
--   **执行命令，提交Application：`flink run -d -t yarn-per-job -c D1_WorldCount_Bounded wc_flink-1.0.jar`**
+-   **执行命令，提交`Application：Flink run -d -t yarn-per-job -c D1_WorldCount_Bounded wc_Flink-1.0.jar`**
 
     ```txt
     # 命令格式，及参数说明
-    flink run -d -t yarn-per-job -c <Application的入口类的全类名> <Application所在jar包>
+    `Flink` run -d -t yarn-per-job -c <Application的入口类的全类名> <Application所在jar包>
     -d 		表示分离模式，使用该参数能够使YARN - Per Job模式的会话后台运行
     -t 		用于指定单作业模式
     ```
 
--   **当Application提交完成之后，启动日志会给出一个YARN Application ID，通过YARN ResourceManager Web UI界面，可以查看任务执行情况。点击`Tracking UI`，能够进入Flink Web UI界面，对任务进行监控或取消任务**
+-   **当`Application`提交完成之后，启动日志会给出一个`YARN Application ID`，通过`YARN ResourceManager Web UI`界面，可以查看任务执行情况。点击`Tracking UI`，能够进入`Flink Web UI`界面，对任务进行监控或取消任务**
 
->   **==注意：上述Flink应用需要读取一个本地文件，是一个有界数据流任务处理，在提交任务之后，由于在Linux上没有该文件，所以会自动失败，但不影响Flink集群启动。后续将会把该任务替换成无界流数据处理任务。==**
+>   **==注意：上述`Flink`应用需要读取一个本地文件，是一个有界数据流任务处理，在提交任务之后，由于在`Linux`上没有该文件，所以会自动失败，但不影响`Flink`集群启动。后续将会把该任务替换成无界流数据处理任务。==**
 >
->   **==注意：不建议使用这种部署模式，因为在Flink 1.15版本之后，Flink就不再支持单作业模式了，如果获取单作业模式的优势，需要部署应用模式。==**
+>   **==注意：不建议使用这种部署模式，因为在`Flink 1.15`版本之后，`Flink`就不再支持单作业模式了，如果获取单作业模式的优势，需要部署应用模式。==**
 
--   **查看YARN任务中正在执行的Flink Per Job任务：`flink list -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
--   **取消正在运行的Flink任务：`flink cancel -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
+-   **查看`YARN`任务中正在执行的`Flink Per Job`任务：`Flink list -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
+-   **取消正在运行的`Flink`任务：`Flink cancel -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
 
->   **注意：YARN会为Application中的每一个Job开启一个Flink集群，当Job执行完成时，该Job所在的Flink集群就会自动释放资源。**
+>   **注意：`YARN`会为`Application`中的每一个`Job`开启一个`Flink`集群，当`Job`执行完成时，该`Job`所在的`Flink`集群就会自动释放资源。**
 
-#### 2.2.3.3 YARN运行模式下的应用模式（YARN - Application模式）
+#### 2.2.3.3 `YARN`运行模式下的应用模式（`YARN - Application`模式）
 
-应用模式和会话模式、单作业模式相同，不需要额外的进行配置，直接执行Application提交命令即可。
+应用模式和会话模式、单作业模式相同，不需要额外的进行配置，直接执行`Application`提交命令即可。
 
--   **执行命令，提交Application：`flink run-application -t yarn-application -c <Application的入口类的全类名> <Application所在jar包>`**
--   **同样，当Application提交完成后，启动日志会给出YARN Application ID，通过YARN ResourceManager Web UI界面，可以查看任务执行情况。同样，点击`Tracking UI`，能够进入Flink Web UI界面，对任务任务进行监控或取消。**
--   **查看YARN任务中正在执行的Flink Application任务：`flink list -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
--   **取消正在运行的Flink任务：`flink cancel -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+-   **执行命令，提交`Application：Flink run-application -t yarn-application -c <Application的入口类的全类名> <Application所在jar包>`**
+-   **同样，当`Application`提交完成后，启动日志会给出`YARN Application ID`，通过`YARN ResourceManager Web UI`界面，可以查看任务执行情况。同样，点击`Tracking UI`，能够进入`Flink Web UI`界面，对任务任务进行监控或取消。**
+-   **查看`YARN`任务中正在执行的`Flink Application`任务：`Flink list -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+-   **取消正在运行的`Flink`任务：`Flink cancel -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
 
->   **说明：在任务提交过程中，可以通过yarn.provided.lib.dirs配置项来将jar包上传到Flink集群所有节点都能访问的地址，一般是HDFS，这种方式下jar包可以预先上传到HDFS，而不需要单独发送到Flink集群，这使得Application提交更加轻量。**
+>   **说明：在任务提交过程中，可以通过`yarn.provided.lib.dirs`配置项来将`jar`包上传到`Flink`集群所有节点都能访问的地址，一般是`HDFS`，这种方式下jar包可以预先上传到`HDFS`，而不需要单独发送到`Flink`集群，这使得`Application`提交更加轻量。**
 >
->   **命令格式：`flink run-application -t yarn-application -Dyarn.provided.lib.dirs=<远程地址> <jar包所在地址>`**
+>   **命令格式：`Flink run-application -t yarn-application -Dyarn.provided.lib.dirs=<远程地址> <jar包所在地址>`**
 >
->   **例如：`flink run-application -t yarn-application -Dyarn.provided.lib.dirs="hdfs://myhdfs/my-remote-flink-dist-dir" hdfs://myhdfs/jars/my-application.jar`**
+>   **例如：`Flink run-application -t yarn-application -Dyarn.provided.lib.dirs="hdfs://myhdfs/my-remote-Flink-dist-dir" hdfs://myhdfs/jars/my-application.jar`**
 
-#### 2.2.3.4 YARN运行模式下的高可用模式（YARN - HA模式）
+#### 2.2.3.4 `YARN`运行模式下的高可用模式（`YARN - HA`模式）
 
-不同于Standalone - HA模式，是同时启动多个JobManager以避免单点故障的问题。YARN - HA模式是利用YARN的重试次数来实现高可用的，当JobManager宕机后，YARN会尝试重启JobManager。
+不同于`Standalone - HA`模式，是同时启动多个`JobManager`以避免单点故障的问题。`YARN - HA`模式是利用`YARN`的重试次数来实现高可用的，当`JobManager`宕机后，`YARN`会尝试重启`JobManager`。
 
-此外，Standalone - HA模式，一般只适用于Standalone的会话模式，而YRAN - HA模式适用于Session模式、Per Job模式以及Application模式。
+此外，`Standalone - HA`模式，一般只适用于`Standalone`的会话模式，而`YRAN - HA`模式适用于`Session`模式、`Per Job`模式以及`Application`模式。
 
-YARN - HA模式需要进行额外的参数配置：
+`YARN - HA`模式需要进行额外的参数配置：
 
--   **在yarn-site.xml文件中添加额外的配置：`vim /opt/module/hadoop-3.1.3-ha/etc/hadoop/yarn-site.xml `**
+-   **在`yarn-site.xml`文件中添加额外的配置：`vim /opt/module/hadoop-3.1.3-ha/etc/hadoop/yarn-site.xml `**
 
     ```xml
     <property>
@@ -535,87 +535,87 @@ YARN - HA模式需要进行额外的参数配置：
     </property>
     ```
 
--   **分发配置好的yarn-site.xml文件：`xsync /opt/module/hadoop-3.1.3-ha/etc/hadoop/yarn-site.xml `**
+-   **分发配置好的`yarn-site.xml`文件：`xsync /opt/module/hadoop-3.1.3-ha/etc/hadoop/yarn-site.xml `**
 
--   **在flink-conf.yaml文件中添加高可用配置：`vim /opt/module/flink-1.13.0-yarn/conf/flink-conf.yaml`**
+-   **在`Flink-conf.yaml`文件中添加高可用配置：`vim /opt/module/Flink-1.13.0-yarn/conf/Flink-conf.yaml`**
 
     ```yaml
-    # yarn-site.xml 中配置的是 JobManager 重启次数的上限, flink-conf.xml 中的次数一般小于这个值
+    # yarn-site.xml 中配置的是 JobManager 重启次数的上限, `Flink`-conf.xml 中的次数一般小于这个值
     yarn.application-attempts: 4 # 该参数默认值为2
     high-availability: zookeeper
-    high-availability.storageDir: hdfs://hadoop132:8020/flink/yarn/ha
+    high-availability.storageDir: hdfs://hadoop132:8020/`Flink`/yarn/ha
     high-availability.zookeeper.quorum: hadoop132:2181,hadoop133:2181,hadoop134:2181
-    high-availability.zookeeper.path.root: /flink-yarn
+    high-availability.zookeeper.path.root: /`Flink`-yarn
     ```
 
-    >   **==注意：Flink YARN - HA模式需要Hadoop环境的支持，所以一定要配置环境变量HADOOP_CLASSPATH和HADOOP_CONF_DIR==**
+    >   **==注意：`Flink YARN - HA`模式需要`Hadoop`环境的支持，所以一定要配置环境变量`HADOOP_CLASSPATH`和`HADOOP_CONF_DIR`==**
     >
     >   ```txt
     >   export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop
     >   export HADOOP_CONF_DIR=`hadoop classpath`
     >   ```
 
--   **分发配置好的flink-conf-yaml文件：`xsync /opt/module/flink-1.13.0-yarn/conf/flink-conf.yaml`**
+-   **分发配置好的`Flink-conf-yaml`文件：`xsync /opt/module/Flink-1.13.0-yarn/conf/Flink-conf.yaml`**
 
--   **启动Zookeeper集群：`zk_mine.sh start`**
+-   **启动`Zookeeper`集群：`zk_mine.sh start`**
 
--   **启动HDFS HA集群：`start-dfs.sh`**
+-   **启动`HDFS HA`集群：`start-dfs.sh`**
 
--   **启动YARN HA集群：`start-yarn.sh`**
+-   **启动`YARN HA`集群：`start-yarn.sh`**
 
-##### 2.2.3.4.1 Flink on YARN HA - Session模式
+##### 2.2.3.4.1 `Flink on YARN HA - Session`模式
 
--   **启动YARN - Session - HA模式：`yarn-session.sh -nm test`。HA部署下，会话模式启动后仍旧会给出Flink Web UI，当JobManager宕机并被YARN重启后，Web UI会发生变化，而已提交的任务会自动重新提交。Web UI发生变化后，可以通过YARN ResourceManger界面的`Tracking UI`重新进入。**
--   **使用命令行或者Web UI可以进行任务提交**
--   **停止YRAN会话：**
+-   **启动`YARN - Session - HA`模式：`yarn-session.sh -nm test`。`HA`部署下，会话模式启动后仍旧会给出`Flink Web UI`，当`JobManager`宕机并被`YARN`重启后，`Web UI`会发生变化，而已提交的任务会自动重新提交。`Web UI`发生变化后，可以通过`YARN ResourceManger`界面的`Tracking UI`重新进入。**
+-   **使用命令行或者`Web UI`可以进行任务提交**
+-   **停止`YRAN`会话：**
     -   **当会话是前台启动时，可以直接终止会话**
     -   **当会话是后台启动时，启动日志会给出停止YARN会话的命令：`echo "stop" | yarn-session.sh -id application_XXXXX_XXX`**
 
-##### 2.2.3.4.2 Flink on YARN HA - Per Job模式
+##### 2.2.3.4.2 `Flink on YARN HA - Per Job`模式
 
--   **不同于Session模式，Per Job模式直接提交任务即可：`flink run -t yarn-per-job -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
--   **当Flink任务执行完成时，会自动停止该Flink集群，也可以通过Flink Web UI手动停止，或者通过YARN命令停止Flink集群所对应的任务**
+-   **不同于`Session`模式，`Per Job`模式直接提交任务即可：`Flink run -t yarn-per-job -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
+-   **当`Flink`任务执行完成时，会自动停止该`Flink`集群，也可以通过`Flink Web UI`手动停止，或者通过`YARN`命令停止`Flink`集群所对应的任务**
 
-##### 2.2.3.4.3 Flink on YARN HA - Application模式
+##### 2.2.3.4.3 `Flink on YARN HA - Application`模式
 
--   **与Per Job模式相同，Application模式直接提交任务即可：`flink run-application -t yarn-application -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
--   **当Flink任务执行完成时，会自动停止该Flink集群，也可以通过Flink Web UI手动停止，或者通过YARN命令停止Flink集群所对应的任务**
+-   **与`Per Job`模式相同，`Application`模式直接提交任务即可：`Flink run-application -t yarn-application -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
+-   **当`Flink`任务执行完成时，会自动停止该`Flink`集群，也可以通过`Flink Web UI`手动停止，或者通过`YARN`命令停止`Flink`集群所对应的任务**
 
-## 2.3、Flink任务提交方式和流程
+## 2.3、`Flink`任务提交方式和流程
 
-Flink任务提交方式分为两种，一种是通过Flink集群的Web UI进行任务提交；另一种方式是通过命令行的方式。
+`Flink`任务提交方式分为两种，一种是通过`Flink`集群的`Web UI`进行任务提交；另一种方式是通过命令行的方式。
 
-在不同的运行模式以及部署模式下，Flink任务的命令行提交方式略有不同，以下将逐一介绍。
+在不同的运行模式以及部署模式下，`Flink`任务的命令行提交方式略有不同，以下将逐一介绍。
 
-### 2.3.1 通过Web UI的方式提交任务
+### 2.3.1 通过`Web UI`的方式提交任务
 
-通过Web UI的方式提交任务通常用于Session部署模式中，原因在于，通常先要能访问Web UI。对于Per Job模式和Application模式，需要先启动Hadoop环境（HDFS和YARN），然后直接向YARN提交任务，当YARN为该Flink任务分配好资源，并部署了JobManager后，用户才能访问Web UI。所以这两种模式都是任务提交后才能访问Web UI，因此不能通过Web UI的方式提交任务，只能使用命令行提交任务。对于Session模式，首先需要先启动一个YARN Session，当YARN Session启动好之后，便可以访问Web UI，并通过Web UI提交任务。
+通过`Web UI`的方式提交任务通常用于`Session`部署模式中，原因在于，通常先要能访问`Web UI`。对于`Per Job`模式和`Application`模式，需要先启动`Hadoop`环境（`HDFS`和`YARN`），然后直接向`YARN`提交任务，当`YARN`为该`Flink`任务分配好资源，并部署了`JobManager`后，用户才能访问`Web UI`。所以这两种模式都是任务提交后才能访问`Web UI`，因此不能通过`Web UI`的方式提交任务，只能使用命令行提交任务。对于`Session`模式，首先需要先启动一个`YARN Session`，当`YARN Session`启动好之后，便可以访问`Web UI`，并通过`Web UI`提交任务。
 
-综上，适合通过Web UI提交任务的模式有：Local、Standalone - Session、Flink on YARN (HA) - Session。
+综上，适合通过`Web UI`提交任务的模式有：`Local`、`Standalone - Session`、`Flink on YARN (HA) - Session`。
 
--   **访问Web UI地址，并点击左侧导航栏：`Submit New Job`**![image-20230301190302963](./03-Flink.assets/image-20230301190302963.png)
--   **点击右上角`Add New`上传Flink任务对应的jar包**![image-20230301190400272](./03-Flink.assets/image-20230301190400272.png)![image-20230301190530311](./03-Flink.assets/image-20230301190530311.png)
--   **点击提交的jar包，进行提交参数设置，并提交任务**![image-20230301190903746](./03-Flink.assets/image-20230301190903746.png)
+-   **访问`Web UI`地址，并点击左侧导航栏：`Submit New Job`**![image-20230301190302963](./03-Flink.assets/image-20230301190302963.png)
+-   **点击右上角`Add New`上传`Flink`任务对应的`jar`包**![image-20230301190400272](./03-Flink.assets/image-20230301190400272.png)![image-20230301190530311](./03-Flink.assets/image-20230301190530311.png)
+-   **点击提交的`jar`包，进行提交参数设置，并提交任务**![image-20230301190903746](./03-Flink.assets/image-20230301190903746.png)
 
--   **任务提交完成后，可以通过左侧导航栏的JobManager和TaskManager对任务进行监控和撤销**
+-   **任务提交完成后，可以通过左侧导航栏的`JobManager`和`TaskManager`对任务进行监控和撤销**
 
 ### 2.3.2 通过命令行的方式提交任务
 
-Per Job模式和Application模式只能通过命令行的方式提交任务，在前面测试时已经展示，现在统一进行介绍。
+`Per Job`模式和`Application`模式只能通过命令行的方式提交任务，在前面测试时已经展示，现在统一进行介绍。
 
--   **Standalone - Session模式：==先启动YARN会话，随后部署JobManager，最后提交任务==**
-    -   **启动Flink服务：`start-cluster.sh`**
-    -   **提交任务：`flink rum -m <Flink服务（IP:port）> -c <Flink Application 全类名> <Flink Application 所在jar包>`**
+-   **`Standalone - Session`模式：==先启动`YARN`会话，随后部署`JobManager`，最后提交任务==**
+    -   **启动`Flink`服务：`start-cluster.sh`**
+    -   **提交任务：`Flink rum -m <Flink服务（IP:port）> -c <Flink Application 全类名> <Flink Application 所在jar包>`**
 
->   ==**Standalone没有Per Job模式**==
+>   ==**`Standalone`没有`Per Job`模式**==
 
--   **Standalone - Application模式：==直接提交任务==**
+-   **`Standalone - Application`模式：==直接提交任务==**
 
-    -   **将Flink Application 所在jar包上传到Flink Standalone集群任意节点的\${FLINK_HOME}/lib目录下**
+    -   **将`Flink Application` 所在`jar`包上传到`Flink Standalone`集群任意节点的`\${Flink_HOME}/lib`目录下**
 
-    -   **提交任务，启动JobManager：`standalone-job.sh start --job-classname <Flink Application 所在jar包>`**
+    -   **提交任务，启动`JobManager`：`standalone-job.sh start --job-classname <Flink Application 所在jar包>`**
 
-    -   **启动TaskManager：`taskmanager.sh start`**
+    -   **启动`TaskManager：`taskmanager`.sh start`**
 
         ```txt
         # 停止JobManager
@@ -624,241 +624,241 @@ Per Job模式和Application模式只能通过命令行的方式提交任务，�
         taskmanager.sh stop
         ```
 
--   **Standalone HA - Session模式：==同Standalone - Session==**
+-   **`Standalone HA - Session`模式：==同`Standalone - Session`==**
 
--   **Flink on YARN (HA) - Session模式：==先开启YARN会话，随后部署JobManager，最后提交任务==**
+-   **`Flink on YARN (HA) - Session`模式：==先开启`YARN`会话，随后部署`JobManager`，最后提交任务==**
 
-    -   **申请开启YARN Session：`yarn-session.sh`**
-    -   **提交任务：`flink run -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
+    -   **申请开启`YARN Session`：`yarn-session.sh`**
+    -   **提交任务：`Flink run -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
 
-    >   **==终止任务需要根据YARN ResouceManger中的Application ID进行停止，如果停止YARN Session任务，那么所有的Job都将停止，如果只停止指定的Job，那么不会对其他Job产生影响。==**
+    >   **==终止任务需要根据`YARN ResouceManger`中的`Application ID`进行停止，如果停止`YARN Session`任务，那么所有的`Job`都将停止，如果只停止指定的`Job`，那么不会对其他`Job`产生影响。==**
 
--   **Flink on YARN (HA) - Per Job模式：==直接向YARN提交任务==**
+-   **`Flink on YARN (HA) - Per Job`模式：==直接向`YARN`提交任务==**
 
-    -   **提交任务：`flink run -t yarn-per-job -c <Flink Application的全类名> <Flink Application 所在jar包>`**
-    -   **停止任务：`flink cancel -t yarn-per-job -Dyarn.application.id=<YARN Application ID> `**
-    -   **查看任务的运行状态：`flink list -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
+    -   **提交任务：`Flink run -t yarn-per-job -c <Flink Application的全类名> <Flink Application 所在jar包>`**
+    -   **停止任务：`Flink cancel -t yarn-per-job -Dyarn.application.id=<YARN Application ID> `**
+    -   **查看任务的运行状态：`Flink list -t yarn-per-job -Dyarn.application.id=<YARN Application ID>`**
 
--   **Flink on YARN (HA) - Application模式：==直接向YARN提交任务==**
+-   **`Flink on YARN (HA) - Application`模式：==直接向`YARN`提交任务==**
 
-    -   **提交任务：`flink run-application -t yarn-application -c <Flink Application的全类名> <Flink Application 所在jar包>`**
-    -   **停止任务：`flink cancel -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
-    -   **查看任务的运行状态：`flink list -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+    -   **提交任务：`Flink run-application -t yarn-application -c <Flink Application的全类名> <Flink Application 所在jar包>`**
+    -   **停止任务：`Flink cancel -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
+    -   **查看任务的运行状态：`Flink list -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
 
-# 三、Flink运行时架构
+# 三、`Flink`运行时架构
 
-Flink是一个需要有效分配和管理计算资源，用以进行流数据处理的分布式系统。虽然集成了所有常见的资源调度组件，例如，YARN、Kubernetes、Mesos，但也可以部署为Standalone，甚至Local模式运行。
+`Flink`是一个需要有效分配和管理计算资源，用以进行流数据处理的分布式系统。虽然集成了所有常见的资源调度组件，例如，`YARN`、`Kubernetes`、`Mesos`，但也可以部署为`Standalone`，甚至`Local`模式运行。
 
-下面将对Flink的体系架构，各个主要组件如何协调工作，以执行流数据处理，以及如何从故障中恢复。
+下面将对`Flink`的体系架构，各个主要组件如何协调工作，以执行流数据处理，以及如何从故障中恢复。
 
-## 3.1、Flink体系架构
+## 3.1、`Flink`体系架构
 
-Flink运行时架构主要包含两个主要的组件：JobManager和TaskManager。
+`Flink`运行时架构主要包含两个主要的组件：`JobManager`和`TaskManager`。
 
 ![image-20230301205516248](./03-Flink.assets/image-20230301205516248.png)
 
 
 
-严格来讲，Client并不是Flink应用执行和运行时架构的一部分，而是用于准备和向JobManager发送DataFlowGraph的组件。随后，Client可以和Flink集群断开连接（detached mode），也可以与Flink集群保持连接（attached mode）。Client可以作为Java或者Scala应用程序的一部分运行，或者在命令行中运行。
+严格来讲，`Client`并不是`Flink`应用执行和运行时架构的一部分，而是用于准备和向`JobManager`发送`DataFlowGraph`的组件。随后，`Client`可以和`Flink`集群断开连接（`detached mode`），也可以与Flink集群保持连接（`attached mode`）。`Client`可以作为`Java`或者`Scala`应用程序的一部分运行，或者在命令行中运行。
 
-JobManager和TaskManager拥有不同的启动方式：直接在机器上作为Standalone集群启动、在容器中启动、或者通过YARN等资源框架管理并启动。TaskManager在启动之后会向JobManager汇报自己的状态以及资源情况，进而能够被JobManager分配任务。
+`JobManager`和`TaskManager`拥有不同的启动方式：直接在机器上作为`Standalone`集群启动、在容器中启动、或者通过`YARN`等资源框架管理并启动。`TaskManager`在启动之后会向`JobManager`汇报自己的状态以及资源情况，进而能够被`JobManager`分配任务。
 
-### 3.1.1 JobManager
+### 3.1.1 `JobManager`
 
-JobManager有许多与协调Flink应用程序，分布式执行时相关的职责：JobManager决定何时调度下一个task(或一组task)，对已完成的task或执行失败做出反应，协调checkpoint，协调故障恢复等等。JobManager由三个不同的部分组成:
+`JobManager`有许多与协调`Flink`应用程序，分布式执行时相关的职责：`JobManager`决定何时调度下一个`task`(或一组`task`)，对已完成的`task`或执行失败做出反应，协调`checkpoint`，协调故障恢复等等。`JobManager`由三个不同的部分组成:
 
 #### 3.1.1.1 JobMaster
 
-JobMaster是JobManager中最核心的组件，负责管理单个Job的执行。Flink集群中可以同时运行多个Job，每个Job都有自己的JobMaster。
+`JobMaster`是`JobManager`中最核心的组件，负责管理单个`Job`的执行。`Flink`集群中可以同时运行多个`Job`，每个`Job`都有自己的`JobMaster`。
 
-在Job提交时，Client会将jar包和已经解析好的DataFlowGraph和JobGraph发送给JobMaster，随后JobMaster会将JobGraph转换成ExecutionGraph，并分发到TaskManager中执行。在Job运行的过程中，JobMaster还会负责所有需要中央协调的操作，比如CheckPoints的协调。
+在`Job`提交时，`Client`会将`jar`包和已经解析好的`DataFlowGraph`和`JobGraph`发送给`JobMaster`，随后`JobMaster`会将`JobGraph`转换成`ExecutionGraph`，并分发到`TaskManager`中执行。在`Job`运行的过程中，`JobMaster`还会负责所有需要中央协调的操作，比如`CheckPoints`的协调。
 
-#### 3.1.1.2 ResourceManager
+#### 3.1.1.2 `ResourceManager`
 
-ResourceManager主要负责资源的分配和管理，一个Flink进群中只有一个。在Flink集群中，资源主要指的是TaskManager的Task Slots，Task Slot是Flink集群资源调度的基本单位，主要包含CPU资源和内存资源。Flink集群运行的每一个Task都必须要分配到一个Slot上。
+`ResourceManager`主要负责资源的分配和管理，一个`Flink`进群中只有一个。在`Flink`集群中，资源主要指的是`TaskManager`的`Task Slots`，`Task Slot`是`Flink`集群资源调度的基本单位，主要包含`CPU`资源和内存资源。`Flink`集群运行的每一个`Task`都必须要分配到一个`Slot`上。
 
-需要注意的是，要区分Flink的ResourceManager和YARN的ResourceManager。
+需要注意的是，要区分`Flink`的`ResourceManager`和`YARN`的`ResourceManager`。
 
-Flink的ResourceManager，针对不同的环境和资源调度框架，都提供了具体的实现。
+`Flink`的`ResourceManager`，针对不同的环境和资源调度框架，都提供了具体的实现。
 
-在Standalone部署模式下，TaskManager是通过配置文件指定的，在Flink集群启动的那一刻，TaskManager的启动数量和节点位置就已经确定，随后启动成功的TaskManager会向JobManager的ResourceManager注册自己，并汇报Task Slots的使用状态。因此，Flink的ResourceManager只能分配可用的Task Slots，当Task Slots不够时，无法独立启动新的TaskManager，以提供Task Slots。
+在`Standalone`部署模式下，`TaskManager`是通过配置文件指定的，在`Flink`集群启动的那一刻，`TaskManager`的启动数量和节点位置就已经确定，随后启动成功的`TaskManager`会向`JobManager`的`ResourceManager`注册自己，并汇报`Task Slots`的使用状态。因此，`Flink`的`ResourceManager`只能分配可用的`Task Slots`，当`Task Slots`不够时，无法独立启动新的`TaskManager`，以提供`Task Slots`。
 
-在集成资源调度框架后，例如，Flink on YARN (HA)部署模式，当新提交的Job申请资源时，ResourceManager会将空闲的Task Slots分配给JobMaster，用以执行新提交的Job。当没有足够的Task Slots时，Flink的ResourceManager会向YARN的ResourceManager发送请求，YARN的ResourceManager将会开启Container，并部署TaskManager，以提供Task Slots。
+在集成资源调度框架后，例如，`Flink on YARN (HA)`部署模式，当新提交的`Job`申请资源时，`ResourceManager`会将空闲的`Task Slots`分配给`JobMaster`，用以执行新提交的`Job`。当没有足够的`Task Slots`时，`Flink`的`ResourceManager`会向`YARN`的`ResourceManager`发送请求，`YARN`的`ResourceManager`将会开启`Container`，并部署`TaskManager`，以提供`Task Slots`。
 
-此外，Flink的ResourceManager还负责停止空闲的TaskManager，释放集群资源。
+此外，`Flink`的`ResourceManager`还负责停止空闲的`TaskManager`，释放集群资源。
 
-#### 3.1.1.3 Discatcher
+#### 3.1.1.3 `Discatcher`
 
-Dispatcher提供了一个用于提交Flink Application的REST接口，并会为每个提交的Job启动一个新的 JobMaster。它还运行 Flink WebUI 用来提供Job执行信息。
+`Dispatcher`提供了一个用于提交`Flink Application`的`REST`接口，并会为每个提交的`Job`启动一个新的` JobMaster`。它还运行 `Flink Web UI `用来提供`Job`执行信息。
 
-### 3.1.2 TaskManager
+### 3.1.2 `TaskManager`
 
-TaskManager又被称为workers，用于进行数据流的具体计算任务，同时能够缓冲数据流，以及与其他TaskManager进行数据交换。
+`TaskManager`又被称为`workers`，用于进行数据流的具体计算任务，同时能够缓冲数据流，以及与其他`TaskManager`进行数据交换。
 
-## 3.2、Job提交流程
+## 3.2、`Job`提交流程
 
-Job总体提交流程
+`Job`总体提交流程
 
 ![image-20230302110430344](./03-Flink.assets/image-20230302110430344.png)
 
--   **由Client通过Discatcher提供的REST接口，将Job提交给JobManager**
--   **随后Discatcher启动JobMaster，将jar包和解析好的DataFlowGraph和JobGraph提交给JobMaster**
--   **JobMaster将JobGraph解析成ExecutionGraph，并计算ExecutionGraph执行所需要的Task Slots数量，并向Flink ResourceManager申请Task Slots**
--   **Flink ResourceManager申请资源：**
-    -   **Standalone部署模式下，Flink ResourceManager将判断当前Flink集群中空闲的Task Slots是否能够满足需求，如果满足，给JobMaster分配资源，如果不满足，由于无法自动启动TaskManager，所以该JobMaster只能等待资源分配**
-    -   **YARN部署模式下，Flink ResourceManager向YARN ResourceManager申请资源，YARN ResourceManager将开启Container，部署TaskManager，并向Flink ResourceManager注册可用Task Slots，Flink ResourceManager获取到足够的Task Slots注册后，将开始执行任务**
--   **JobMaster将需要执行的任务分发给TaskManager，开始执行任务**
+-   **由`Client`通过`Discatcher`提供的`REST`接口，将`Job`提交给`JobManager`**
+-   **随后`Discatcher`启动`JobMaster`，将`jar`包和解析好的`DataFlowGraph`和`JobGraph`提交给`JobMaster`**
+-   **`JobMaster`将`JobGraph`解析成`ExecutionGraph`，并计算`ExecutionGraph`执行所需要的`Task Slots`数量，并向`Flink ResourceManager`申请`Task Slots`**
+-   **`Flink ResourceManager`申请资源：**
+    -   **`Standalone`部署模式下，`Flink ResourceManager`将判断当前`Flink`集群中空闲的`Task Slots`是否能够满足需求，如果满足，给`JobMaster`分配资源，如果不满足，由于无法自动启动`TaskManager`，所以该`JobMaster`只能等待资源分配**
+    -   **`YARN`部署模式下，`Flink ResourceManager`向`YARN ResourceManager`申请资源，`YARN ResourceManager`将开启`Container`，部署`TaskManager`，并向`Flink ResourceManager`注册可用`Task Slots`，`Flink ResourceManager`获取到足够的`Task Slots`注册后，将开始执行任务**
+-   **`JobMaster`将需要执行的任务分发给`TaskManager`，开始执行任务**
 
-Standalone运行模式下，Job提交流程较为简单，由Flink ResourceManager进行资源管理，当资源充足时，直接执行Job，当资源不足时，需要等待其他任务执行完成并释放资源。
+`Standalone`运行模式下，`Job`提交流程较为简单，由`Flink ResourceManager`进行资源管理，当资源充足时，直接执行`Job`，当资源不足时，需要等待其他任务执行完成并释放资源。
 
-YARN运行模式下，不同部署模式下，任务提交流程略有不同。
+`YARN`运行模式下，不同部署模式下，任务提交流程略有不同。
 
-在Flink on YARN (HA) - Session模式下，首先需要运行一个YARN Application，与之对应地启动一个Container，用于部署JobManager（由于没有任务提交，所以不会启动TaskManager），即开启一个YARN会话，随后进行任务提交，任务提交过程与总体提交流程基本相同。Session模式下，Application通过Client解析成一个或多个Job，随后提交给JobManager。
+在`Flink on YARN (HA) - Session`模式下，首先需要运行一个`YARN Application`，与之对应地启动一个`Container`，用于部署`JobManager`（由于没有任务提交，所以不会启动`TaskManager`），即开启一个`YARN`会话，随后进行任务提交，任务提交过程与总体提交流程基本相同。`Session`模式下，`Application`通过`Client`解析成一个或多个`Job`，随后提交给`JobManager`。
 
-在Flink on YARN (HA) - Per Job模式下，不需要启动YARN Session，Client直接将Job提交给YARN ResourceManager，随后开启Container，部署JobManager和TaskManager，最后执行任务。Per Job模式下，Application通过Client解析成一个或多个Job，随后提交到YARN ResourceManager。
+在`Flink on YARN (HA) - Per Job`模式下，不需要启动`YARN Session`，`Client`直接将`Job`提交给`YARN ResourceManager`，随后开启`Container`，部署`JobManager`和`TaskManager`，最后执行任务。`Per Job`模式下，`Application`通过`Client`解析成一个或多个`Job`，随后提交到`YARN ResourceManager`。
 
-Flink on YARN (HA) - Application模式与Flink on YARN (HA) - Per Job模式基本相似，只是提交给YARN ResourceManager的不再是具体的Job，而是整个Application。一个Application包含一个或多个Job，这些Job都将在JobManager中被解析出来，并为每个Job启动对应的JobMaster。
+`Flink on YARN (HA) - Application`模式与`Flink on YARN (HA) - Per Job`模式基本相似，只是提交给`YARN ResourceManager`的不再是具体的`Job`，而是整个`Application`。一个`Application`包含一个或多个`Job`，这些`Job`都将在`JobManager`中被解析出来，并为每个`Job`启动对应的`JobMaster`。
 
 ## 3.3、其他重要概念
 
-除了以上介绍的整体架构和核心组件，Flink还有一系列概念需要介绍，这对理解Flink代码是如何一步一步转换成可执行Task，每个Flink Application将转换成多少个Task，以及需要多少Task Slots才能满足Application的运行至关重要，只有清楚这些问题，才能依据实际的业务情况，对Flink集群进行合理的资源配置。
+除了以上介绍的整体架构和核心组件，Flink还有一系列概念需要介绍，这对理解Flink代码是如何一步一步转换成可执行`Task`，每个`Flink Application`将转换成多少个`Task`，以及需要多少`Task Slots`才能满足`Application`的运行至关重要，只有清楚这些问题，才能依据实际的业务情况，对`Flink`集群进行合理的资源配置。
 
-### 3.3.1、Parallelism（并行度）
+### 3.3.1、`Parallelism`（并行度）
 
-Flink Application的程序结构是为每一条数据定义了一连串的数据处理操作，这些操作被称为Operator，或者”算子“。数据在进入Flink集群后，会依次调用这些Operator。所以Flink Application程序的执行就好像是”铁打的算子，流水的数据“。
+`Flink Application`的程序结构是为每一条数据定义了一连串的数据处理操作，这些操作被称为`Operator`，或者”算子“。数据在进入`Flink`集群后，会依次调用这些`Operator`。所以`Flink Application`程序的执行就好像是”铁打的算子，流水的数据“。
 
-在Job提交过程中，Flink程序会被映射成所有Operator按照逻辑顺序连在一起的一个DAG，这个DAG被称为DataFlow Graph。在Flink Web UI上提交完作业后，点击”show plan“就可以看到对应的DataFlow Graph。
+在`Job`提交过程中，`Flink`程序会被映射成所有`Operator`按照逻辑顺序连在一起的一个`DAG`，这个`DAG`被称为`DataFlow Graph`。在`Flink Web UI`上提交完作业后，点击”`show plan`“就可以看到对应的`DataFlow Graph`。
 
-Flink Application的程序结构都以Source Operator开始，以Sink Operator结束，中间加以数据处理操作。除了Source Operator和Sink Operator外，数据处理操作不一定是一个Transformation Operator，只有进行数据转换处理的方法调用，才是Transformation Operator。代码中有一些方法的调用，数据是没有进行转换的，只是对数据属性进行了设置，或者是数据发送方式的定义。例如，keyBy()方法调用，broadcast()方法调用。
+`Flink Application`的程序结构都以`Source Operator`开始，以`Sink Operator`结束，中间加以数据处理操作。除了`Source Operator`和`Sink Operator`外，数据处理操作不一定是一个`Transformation Operator`，只有进行数据转换处理的方法调用，才是`Transformation Operator`。代码中有一些方法的调用，数据是没有进行转换的，只是对数据属性进行了设置，或者是数据发送方式的定义。例如，`keyBy()`方法调用，`broadcast()`方法调用。
 
-正如上述所说，Flink对数据的处理方式是：算子不动，数据流动。为了实现流式数据的分布式计算，Flink将Operator复制多份，并分发到多个节点上，流式数据到来后，可以随机进入任何一个节点中进行处理，也可以通过设置进入指定的节点中进行处理。这样，一个Operator任务就被拆分成多个并行的子任务，这些子任务会在不同的节点中进行运算。
+正如上述所说，`Flink`对数据的处理方式是：算子不动，数据流动。为了实现流式数据的分布式计算，`Flink`将`Operator`复制多份，并分发到多个节点上，流式数据到来后，可以随机进入任何一个节点中进行处理，也可以通过设置进入指定的节点中进行处理。这样，一个`Operator`任务就被拆分成多个并行的子任务，这些子任务会在不同的节点中进行运算。
 
-在Flink执行过程中，每一个Operator可以包含一个或者多个subTask，这些subTask会在不同的线程、不同的物理机或不同的容器中完全独立地执行。
+在`Flink`执行过程中，每一个`Operator`可以包含一个或者多个`subTask`，这些`subTask`会在不同的线程、不同的物理机或不同的容器中完全独立地执行。
 
-Operator的subTask的个数称为该Operator的并行度。
+`Operator`的`subTask`的个数称为该`Operator`的并行度。
 
-一个流程序的并行度，可以认为是所有Operator中最大的并行度。
+一个流程序的并行度，可以认为是所有`Operator`中最大的并行度。
 
-一个流程序中，不同的Operator可以具有不同的并行度。
+一个流程序中，不同的`Operator`可以具有不同的并行度。
 
 **==并行度的设置以及优先级，以下优先级从高到低==**
 
--   **为每一个Operator单独设置并行度：Operator直接调用`setParallelism()`方法**
--   **为Application设置全局并行度：流执行环境调用`setParallelism()`方法**
--   **提交Application时，设置并行度：**
-    -   **Web UI提交，在对应输入框中直接添加并行度**
-    -   **命令行提交，使用-p参数，设置并行度**
--   **`flink-conf.yaml`配置文件中配置默认并行度：配置`parallelism.default`配置项**
+-   **为每一个`Operator`单独设置并行度：`Operator`直接调用`setParallelism()`方法**
+-   **为`Application`设置全局并行度：流执行环境调用`setParallelism()`方法**
+-   **提交`Application`时，设置并行度：**
+    -   **`Web UI`提交，在对应输入框中直接添加并行度**
+    -   **命令行提交，使用`-p`参数，设置并行度**
+-   **`Flink-conf.yaml`配置文件中配置默认并行度：配置`parallelism.default`配置项**
 
 ![image-20230302140600577](./03-Flink.assets/image-20230302140600577.png)
 
-### 3.3.2、Operator Chain（算子链）
+### 3.3.2、`Operator Chain`（算子链）
 
-根据DataFlow Graph和Operator的并行度，能够计算出每个Application将会产生多少个并行子任务，那么这些并行子任务需要多少的Task Slot呢？这需要考虑到算子之间数据的传输问题。
+根据`DataFlow Graph`和`Operator`的并行度，能够计算出每个`Application`将会产生多少个并行子任务，那么这些并行子任务需要多少的`Task Slot`呢？这需要考虑到算子之间数据的传输问题。
 
-类似于Spark的宽依赖和窄依赖。
+类似于`Spark`的宽依赖和窄依赖。
 
-在Flink中，如果上游Operator的数据向下游Operator发送不需要进行Shuffle时，那么会将上游Operator和下游Operator合并成一个”大“的Task，这个”大“的Task将会被放到同一个Task Slot中进行执行，这个”大”的Task称为Operator Chain。基于Operator的合并能够有效减少线程之间的切换和基于缓存的数据交换，在减少延时的同时提高数据处理效率。
+在`Flink`中，如果上游`Operator`的数据向下游`Operator`发送不需要进行`Shuffle`时，那么会将上游`Operator`和下游`Operator`合并成一个”大“的`Task`，这个”大“的`Task`将会被放到同一个`Task Slot`中进行执行，这个”大”的`Task`称为`Operator Chain`。基于`Operator`的合并能够有效减少线程之间的切换和基于缓存的数据交换，在减少延时的同时提高数据处理效率。
 
-如果上游Operator的数据向下游Operator发送需要进行Shuffle时，那么就无法进行Operator合并。
+如果上游`Operator`的数据向下游`Operator`发送需要进行`Shuffle`时，那么就无法进行`Operator`合并。
 
 ![image-20230302140621237](./03-Flink.assets/image-20230302140621237.png)
 
-### 3.3.3、DataFlowGraph、Job Graph、Execution Graph和Physical Graph
+### 3.3.3、`DataFlowGraph`、`Job Graph`、`Execution Graph`和`Physical Graph`
 
 ![image-20230302141920007](./03-Flink.assets/image-20230302141920007.png)
 
--   **DataFlow Graph**
+-   **`DataFlow Graph`**
 
-    根据Flink Application代码生成的最初的DAG，用来表示程序的拓扑结构。DataFlowGraph中的节点完全对应代码中的Operator操作。
+    根据`Flink Application`代码生成的最初的`DAG`，用来表示程序的拓扑结构。`DataFlowGraph`中的节点完全对应代码中的`Operator`操作。
 
-    一般在Client中生成。
+    一般在`Client`中生成。
 
--   **Job Graph**
+-   `**Job Graph**`
 
-    DataFlow Graph经过优化后形成Job Graph，主要优化为：根据是否满足窄依赖关系，将多个符合条件的Operator合并在一起，形成Operator China，减少Shuffle过程带来的时间和资源的损耗。
+    `DataFlow Graph`经过优化后形成`Job Graph`，主要优化为：根据是否满足窄依赖关系，将多个符合条件的`Operator`合并在一起，形成`Operator China`，减少`Shuffle`过程带来的时间和资源的损耗。
 
-    Job Graph确定了当前Job中所有任务的划分。
+    `Job Graph`确定了当前`Job`中所有任务的划分。
 
-    一般在Client中生成，并提交到JobMaster。
+    一般在`Client`中生成，并提交到`JobMaster`。
 
--   **Execution Graph**
+-   **`Execution Graph`**
 
-    JobMaster收到Job Graph后，根据并行度的设置，会形成ExecutionGraph，是调度层最为核心的数据结构。Execution Graph的形成最主要解决了Task之间数据传递的方式。
+    `JobMaster`收到`Job Graph`后，根据并行度的设置，会形成`ExecutionGraph`，是调度层最为核心的数据结构。`Execution Graph`的形成最主要解决了`Task`之间数据传递的方式。
 
--   **Physical Graph**
+-   **`Physical Graph`**
 
-    Execution Graph生成之后，会由JobMaster分发给TaskManager，各个TaskManager会根据Execution Graph部署任务，最终的物理执行过程会形成Physical Graph，这是具体执行层面的图，并不是一个具体的数据结构。
+    `Execution Graph`生成之后，会由`JobMaster`分发给`TaskManager`，各个`TaskManager`会根据`Execution Graph`部署任务，最终的物理执行过程会形成`Physical Graph`，这是具体执行层面的图，并不是一个具体的数据结构。
 
-    Physical Graph主要是在Execution Graph的基础上，进一步确定数据存放的位置和收发的具体方式。Physical Graph形成之后，TaskManager就可以对传递来的数据进行计算和处理了。
+    `Physical Graph`主要是在`Execution Graph`的基础上，进一步确定数据存放的位置和收发的具体方式。`Physical Graph`形成之后，`TaskManager`就可以对传递来的数据进行计算和处理了。
 
-### 3.3.4、Task和Task Slot
+### 3.3.4、`Task`和`Task Slot`
 
-每个 worker（TaskManager）都是一个JVM 进程，可以在单独的线程中执行一个或多个 subTask。为了控制一个TaskManager中接受Task的，就有了所谓的Task Slots（至少一个）。
+每个 `worker`（`TaskManager`）都是一个`JVM` 进程，可以在单独的线程中执行一个或多个 `subTask`。为了控制一个`TaskManager`中接受`Task`的，就有了所谓的`Task Slots`（至少一个）。
 
-每个Task Slot代表TaskManager中资源的固定子集。例如，具有3个Slot的TaskManager会将其托管内存的1/3用于每个Slot。分配资源意味着subTask不会与其他Job的subTask竞争托管内存。
+每个`Task Slot`代表`TaskManager`中资源的固定子集。例如，具有3个`Slot`的`TaskManager`会将其托管内存的1/3用于每个`Slot`。分配资源意味着`subTask`不会与其他`Job`的`subTask`竞争托管内存。
 
-通过调整Task Slot的数量，用户可以定义subTask如何互相隔离。每个TaskManager有一个Slot，这意味着每个Task组都在单独的 JVM 中运行（例如，可以在单独的容器中启动）。具有多个Slot意味着更多subTask共享同一JVM。同一JVM中的Task共享TCP连接（通过多路复用）和心跳信息。它们还可以共享数据集和数据结构，从而减少了每个Task的开销。
+通过调整`Task Slot`的数量，用户可以定义`subTask`如何互相隔离。每个`TaskManager`有一个`Slot`，这意味着每个`Task`组都在单独的 `JVM` 中运行（例如，可以在单独的容器中启动）。具有多个`Slot`意味着更多`subTask`共享同一`JVM`。同一`JVM`中的`Task`共享`TCP`连接（通过多路复用）和心跳信息。它们还可以共享数据集和数据结构，从而减少了每个`Task`的开销。
 
-默认情况下，Flink允许subTask共享Slot，即便它们是不同的Task的subTask，只要是来自于同一Job即可。结果就是一个Slot可以支持整个Job的Task链路。允许Slot共享有两个主要优点：
+默认情况下，`Flink`允许`subTask`共享`Slot`，即便它们是不同的`Task`的`subTask`，只要是来自于同一`Job`即可。结果就是一个`Slot`可以支持整个`Job`的`Task`链路。允许`Slot`共享有两个主要优点：
 
--   Flink集群所需的Task Slot和作业中使用的最大并行度恰好一样。无需计算程序总共包含多少个Task（具有不同并行度）
--   容易获得更好的资源利用。如果没有Slot 共享，非密集subTask（Source / map()）将占用与密集型subTask（Window）一样多的资源。通过Slot共享，可以充分利用分配的资源，同时确保繁重的subTask在TaskManager之间公平分配
+-   `Flink`集群所需的`Task Slot`和作业中使用的最大并行度恰好一样。无需计算程序总共包含多少个`Task`（具有不同并行度）
+-   容易获得更好的资源利用。如果没有`Slot` 共享，非密集`subTask（Source / map()）`将占用与密集型`subTask（Window）`一样多的资源。通过`Slot`共享，可以充分利用分配的资源，同时确保繁重的`subTask`在`TaskManager`之间公平分配
 
-# 四、DataStream API
+# 四、`DataStream API`
 
-Flink 有非常灵活的分层API设计，其中的核心层就是DataStream / DataSet API。由于新版本已经实现了流批一体，DataSet API将被弃用，官方推荐统一使用 DataStream API 处理流数据和批数据。**==下面主要并且默认介绍基本的DataStream API用法。==**
+`Flink `有非常灵活的分层`API`设计，其中的核心层就是`DataStream / DataSet API`。由于新版本已经实现了流批一体，`DataSet API`将被弃用，官方推荐统一使用 `DataStream API `处理流数据和批数据。**==下面主要并且默认介绍基本的`DataStream API`用法。==**
 
-DataStream（数据流）本身是Flink中一个用来表示数据集合的类（Class），编写Flink代码其实就是基于这种数据类型的处理，所以这套核心API就以DataStream命名。对于批处理和流处理，都可以用这同一套API来实现。
+`DataStream`（数据流）本身是Flink中一个用来表示数据集合的类（`Class`），编写Flink代码其实就是基于这种数据类型的处理，所以这套核心`API`就以`DataStream`命名。对于批处理和流处理，都可以用这同一套API来实现。
 
-DataStream在用法上有些类似于Java集合，但又有所不同。Flink Application在代码中往往并不关心DataStream中具体的数据，而只是用API定义出一连串的操作来处理它们，即数据流的“转换”。
+`DataStream`在用法上有些类似于`Java`集合，但又有所不同。`Flink Application`在代码中往往并不关心`DataStream`中具体的数据，而只是用`API`定义出一连串的操作来处理它们，即数据流的“转换”。
 
-一个Flink Application，其实就是对DataStream的各种转换。具体来说，程序结构基本上由以下几部分构成：
+一个`Flink Application`，其实就是对`DataStream`的各种转换。具体来说，程序结构基本上由以下几部分构成：
 
--   **创建流执行环境（Execution Environment）**  
--   **读取数据源（Source）**
--   **定义数据转换操作（Transformations）**
--   **定义计算结果的输出（Sink）**
--   **执行流/批数据处理（Execute）**
+-   **创建流执行环境（`Execution Environment`）**  
+-   **读取数据源（`Source`）**
+-   **定义数据转换操作（`Transformations`）**
+-   **定义计算结果的输出（`Sink`）**
+-   **执行流/批数据处理（`Execute`）**
 
-其中，获取环境和执行流/批数据处理，都可以认为是针对执行环境的操作，所以在编写Flink Application的过程中，主要关注Execution Environment、Source、Transform、Sink。
+其中，获取环境和执行流/批数据处理，都可以认为是针对执行环境的操作，所以在编写`Flink Application`的过程中，主要关注`Execution Environment`、`Source`、`Transform`、`Sink`。
 
 ![image-20230302165350717](./03-Flink.assets/image-20230302165350717.png)
 
-## 4.0、引入Flink项目的依赖
+## 4.0、引入`Flink`项目的依赖
 
-为了能在IDEA开发环境中编写并运行Flink代码，需要在module的pom.xml中引入Flink项目的相关依赖，包含，flink-java、flink-streaming-java，以及flink-clients（Flink客户端，可以省略）。另外为了便于查看运行日志，还引入slf4j和log4j进行日志管理。
+为了能在`IDEA`开发环境中编写并运行`Flink`代码，需要在`module`的`pom.xml`中引入`Flink`项目的相关依赖，包含，`Flink-java`、`Flink-streaming-java`，以及`Flink-clients`（`Flink`客户端，可以省略）。另外为了便于查看运行日志，还引入`slf4j`和`log4j`进行日志管理。
 
 ```xml
 <properties>
-    <flink.version>1.13.0</flink.version>
+    <`Flink`.version>1.13.0</`Flink`.version>
     <java.version>1.8</java.version>
-    <!-- 定义Scala版本。Flink底层实现是Java代码，但Flink架构中使用了Akka来实现底层的分布式通信，而Akka是使用Scala开发的 -->
+    <!-- 定义Scala版本。`Flink`底层实现是Java代码，但`Flink`架构中使用了Akka来实现底层的分布式通信，而Akka是使用Scala开发的 -->
     <scala.binary.version>2.12</scala.binary.version>
     <slf4j.version>1.7.30</slf4j.version>
 </properties>
 
 <dependencies>
-    <!-- 引入 Flink 相关依赖-->
-    <!-- flink-java -->
+    <!-- 引入 `Flink` 相关依赖-->
+    <!-- `Flink`-java -->
     <dependency>
-        <groupId>org.apache.flink</groupId>
-        <artifactId>flink-java</artifactId>
-        <version>${flink.version}</version>
+        <groupId>org.apache.`Flink`</groupId>
+        <artifactId>`Flink`-java</artifactId>
+        <version>${`Flink`.version}</version>
     </dependency>
 
-    <!-- flink-streaming -->
+    <!-- `Flink`-streaming -->
     <dependency>
-        <groupId>org.apache.flink</groupId>
-        <artifactId>flink-streaming-java_${scala.binary.version}</artifactId>
-        <version>${flink.version}</version>
+        <groupId>org.apache.`Flink`</groupId>
+        <artifactId>`Flink`-streaming-java_${scala.binary.version}</artifactId>
+        <version>${`Flink`.version}</version>
     </dependency>
 
-    <!-- flink-client -->
+    <!-- `Flink`-client -->
     <dependency>
-        <groupId>org.apache.flink</groupId>
-        <artifactId>flink-clients_${scala.binary.version}</artifactId>
-        <version>${flink.version}</version>
+        <groupId>org.apache.`Flink`</groupId>
+        <artifactId>`Flink`-clients_${scala.binary.version}</artifactId>
+        <version>${`Flink`.version}</version>
     </dependency>
 
     <!-- 引入日志管理相关依赖-->
@@ -909,7 +909,7 @@ DataStream在用法上有些类似于Java集合，但又有所不同。Flink App
 </build>
 ```
 
-配置日志管理：在src/main/resources目录下创建文件`log4j.properties`，添加以下内容
+配置日志管理：在`src/main/resources`目录下创建文件`log4j.properties`，添加以下内容
 
 ```txt
 log4j.rootLogger=error, stdout
@@ -918,9 +918,9 @@ log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
 log4j.appender.stdout.layout.ConversionPattern=%-4r [%t] %-5p %c %x - %m%n
 ```
 
-## 4.1、创建执行环境（Execution Environment）
+## 4.1、创建执行环境（`Execution Environment`）
 
-Flink Application可以在不同的上下文环境中运行：本地JVM、远程集群。不同的环境，Application的提交运行过程会有所不同，所以，在提交作业执行计算时，必须先获取当前Flink的运行环境，从而建立与Flink服务之间的联系。只有获取运行环境的上下文信息，才能将具体的任务调度到不同的TaskManager执行。
+`Flink Application`可以在不同的上下文环境中运行：本地`JVM`、远程集群。不同的环境，`Application`的提交运行过程会有所不同，所以，在提交作业执行计算时，必须先获取当前`Flink`的运行环境，从而建立与`Flink`服务之间的联系。只有获取运行环境的上下文信息，才能将具体的任务调度到不同的`TaskManager`执行。
 
 **流执行环境的创建均是调用`StreamExecutionEnvironment`类的静态方法来创建的。**
 
@@ -931,7 +931,7 @@ Flink Application可以在不同的上下文环境中运行：本地JVM、远程
     StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
     ```
 
-    `getExecutionEnvironment()`方法会根据当前运行的上下文直接得到执行环境。即，如果程序是独立运行的，就返回一个本地执行环境；如果是创建了jar包，然后从命令行调用jar并提交到集群执行，那么就返回集群的执行环境。
+    `getExecutionEnvironment()`方法会根据当前运行的上下文直接得到执行环境。即，如果程序是独立运行的，就返回一个本地执行环境；如果是创建了`jar`包，然后从命令行调用`jar`并提交到集群执行，那么就返回集群的执行环境。
 
 -   **调用`createLocalEnvironment()`方法创建本地执行环境：**
 
@@ -966,24 +966,24 @@ Flink Application可以在不同的上下文环境中运行：本地JVM、远程
 >   ExecutionEnvironment remoteEnvironment = ExecutionEnvironment.createRemoteEnvironment(
 >           "host", // 集群地址，JobManager所在节点的地址
 >           6123, // JobManager的服务端口
->           "jars" // Flink Application所在jar包
+>           "jars" // `Flink` Application所在jar包
 >   );
 >   ```
 >
->   在Flink 1.12.0版本中，Flink DataStream API新增了一个重要特性，可以支持不同的执行模式，通过简单的设置就可以让Flink程序在流处理和批处理之间切换，进而实现了API上的批流统一，因此从Flink 1.12.0版本开始，DataSet API就开始逐步弃用了。
+>   在`Flink 1.12.0`版本中，`Flink DataStream API`新增了一个重要特性，可以支持不同的执行模式，通过简单的设置就可以让`Flink`程序在流处理和批处理之间切换，进而实现了`API`上的批流统一，因此从`Flink 1.12.0`版本开始，`DataSet API`就开始逐步弃用了。
 >
->   -   **流执行模式（STREAMING）**
+>   -   **流执行模式（`STREAMING`）**
 >
->       这是DataStream API的默认模式，一般用于需要持续实时处理的无界数据流 。
+>       这是`DataStream API`的默认模式，一般用于需要持续实时处理的无界数据流 。
 >
->   -   **批执行模式（BATCH）**
+>   -   **批执行模式（`BATCH`）**
 >
->       专门用于批处理的执行模式, 这种模式下， Flink 处理作业的方式类似于 MapReduce 框架。
+>       专门用于批处理的执行模式, 这种模式下， Flink 处理作业的方式类似于 `MapReduce `框架。
 >
 >       ```bash
 >       # 通过命令行配置BATCH执行模式
 >       # 通过命令提交任务时，利用参数-Dexecution.runtime-mode配置执行模式
->       flink run -Dexecution.runtime-mode=BATCH ...
+>       `Flink` run -Dexecution.runtime-mode=BATCH ...
 >       ```
 >
 >       ```java
@@ -992,21 +992,21 @@ Flink Application可以在不同的上下文环境中运行：本地JVM、远程
 >       env.setRuntimeMode(RuntimeExecutionMode.BATCH);
 >       ```
 >
->   -   **自动模式（AUTOMATIC）**
+>   -   **自动模式（`AUTOMATIC`）**
 >
 >       在这种模式下，将由程序根据输入数据源是否有界，来自动选择执行模式。
 >
 >       配置执行模式的方式，同上。
 
-## 4.2、Source Operator
+## 4.2、`Source Operator`
 
-Flink程序中，Source用于对接数据源，将数据读取到Flink集群中，进行才能够进行数据处理。
+`Flink`程序中，`Source`用于对接数据源，将数据读取到`Flink`集群中，进行才能够进行数据处理。
 
-Flink可以从各种来源获取数据，然后构建 DataStream 进行转换处理。一般将数据的输入来源称为数据源(data source)，而读取数据的算子就是源算子（Source Operator）。
+`Flink`可以从各种来源获取数据，然后构建 `DataStream `进行转换处理。一般将数据的输入来源称为数据源(`data source`)，而读取数据的算子就是源算子（`Source Operator`）。
 
 ### 4.2.1 从集合中读取数据
 
-这是最简单的数据读取方式。在代码中直接创建Java集合，将需要被Flink读取的数据添加到集合中，最后通过流执行环境对象调用`fromCollection()`方法，将数据读取到Flink中。
+这是最简单的数据读取方式。在代码中直接创建`Java`集合，将需要被Flink读取的数据添加到集合中，最后通过流执行环境对象调用`fromCollection()`方法，将数据读取到`Flink`中。
 
 从集合中读取数据，相当于将数据临时存储到内存中，作为数据源使用，一般用于测试。
 
@@ -1030,7 +1030,7 @@ public class C001_ReadMemorySource {
         arrayListSource.add("hello scala");
         arrayListSource.add("hello python");
         arrayListSource.add("hello shell");
-        arrayListSource.add("hello flink");
+        arrayListSource.add("hello `Flink`");
         arrayListSource.add("hello spark");
 
         // TODO 3、从集合中读取数据源
@@ -1064,7 +1064,7 @@ public static void main(String[] args) throws Exception {
             "hello java",
             "hello scala",
             "hello python",
-            "hello flink"
+            "hello `Flink`"
     );
 
     // TODO 3、控制台打印数据流
@@ -1081,7 +1081,7 @@ public static void main(String[] args) throws Exception {
 
 利用流执行环境对象调用`readTextFile()`方法，传入文本文件的路径，进行数据读取。
 
-**需要说明的是，在IDEA开发环境中读取文件系统中的文本文件时，需要添加相关的依赖，例如读取Hadoop的文件，需要添加以下的依赖：**
+**需要说明的是，在`IDEA`开发环境中读取文件系统中的文本文件时，需要添加相关的依赖，例如读取`Hadoop`的文件，需要添加以下的依赖：**
 
 ```xml
 <dependency>
@@ -1106,10 +1106,10 @@ hello kafka
 hello dataX
 hello maxwell
 hello spark
-hello flink
+hello `Flink`
 ```
 
-将文件上传到Hadoop文件系统中：`hadoop -put /home/justlancer/text2_world.txt /input`
+将文件上传到`Hadoop`文件系统中：`hadoop -put /home/justlancer/text2_world.txt /input`
 
 ```java
 /**
@@ -1125,9 +1125,9 @@ public class C002_ReadCharacterFileSource {
 
         // TODO 2、读取文本文件
         // 读取本地文本文件
-        DataStreamSource<String> stringDSLocal = env.readTextFile("C:\\my_workplace_git\\flink_api\\input\\text2_world.txt");
+        DataStreamSource<String> stringDSLocal = env.readTextFile("C:\\my_workplace_git\\`Flink`_api\\input\\text2_world.txt");
         // 读取文件系统中的文本文件
-        DataStreamSource<String> stringDSFileSystem = env.readTextFile("hdfs://hadoop132:8020/flink_input/text2_world.txt");
+        DataStreamSource<String> stringDSFileSystem = env.readTextFile("hdfs://hadoop132:8020/`Flink`_input/text2_world.txt");
 
         // TODO 3、打印数据流
         stringDSLocal.print(">>>>");
@@ -1139,11 +1139,11 @@ public class C002_ReadCharacterFileSource {
 }
 ```
 
-### 4.2.3 读取Socket文本流数据
+### 4.2.3 读取`Socket`文本流数据
 
-从文本文件中读取数据，可以模拟有界数据流；为了模拟无界数据流，可以读取Socket文本流数据。
+从文本文件中读取数据，可以模拟有界数据流；为了模拟无界数据流，可以读取`Socket`文本流数据。
 
-读取Socket文本流数据是通过流执行环境调用`socketTextStream()`方法，传入地址和端口号，进行数据读取。
+读取`Socket`文本流数据是通过流执行环境调用`socketTextStream()`方法，传入地址和端口号，进行数据读取。
 
 ```java
 /**
@@ -1169,21 +1169,21 @@ public class C003_ReadSocketTextSource {
 }
 ```
 
-### 4.2.4 读取Kafka
+### 4.2.4 读取`Kafka`
 
-Flink框架并没有为Kafka数据源提供内嵌的实现方法，因此只能通过调用`addSource()`方法、实现`SourceFunction`接口。虽然Flink没有提供内嵌方法，但Flink提供了一个连接工具`flink-connertor-kafka`，直接实现了一个消费者`FlinkKakfaConsumer`，用于读取Kafka的数据。
+`Flink`框架并没有为`Kafka`数据源提供内嵌的实现方法，因此只能通过调用`addSource()`方法、实现`SourceFunction`接口。虽然`Flink`没有提供内嵌方法，但Flink提供了一个连接工具`Flink-connertor-kafka`，直接实现了一个消费者`FlinkKakfaConsumer`，用于读取`Kafka`的数据。
 
-读取Kafka的数据需要开启Kafka服务，这里以Kafka集群为例。
+读取`Kafka`的数据需要开启`Kafka`服务，这里以`Kafka`集群为例。
 
--   **启动Zookeeper集群：`zk_mine.sh start`**
+-   **启动`Zookeeper`集群：`zk_mine.sh start`**
 
--   **启动Kafka集群：`kf_mine.sh start`**
+-   **启动`Kafka`集群：`kf_mine.sh start`**
 
--   **创建测试用Kafka主题`first`，分区数1，副本数1：`kafka-topics.sh --bootstrap-server hadoop132:9092 --create --topic first --partitions 1 --replication-factor 1`**
+-   **创建测试用`Kafka`主题`first`，分区数1，副本数1：`kafka-topics.sh --bootstrap-server hadoop132:9092 --create --topic first --partitions 1 --replication-factor 1`**
 
--   **开启Kafka生产者客户端：`kafka-console-producer.sh --bootstrap-server hadoop132:9092 --topic first`**
+-   **开启`Kafka`生产者客户端：`kafka-console-producer.sh --bootstrap-server hadoop132:9092 --topic first`**
 
--   **编写读取Kafka数据的Flink代码，并运行：**
+-   **编写读取`Kafka`数据的`Flink`代码，并运行：**
 
     ```Java
     /**
@@ -1197,7 +1197,7 @@ Flink框架并没有为Kafka数据源提供内嵌的实现方法，因此只能�
             StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
             env.setParallelism(1);
     
-            // TODO 2、配置Kafka消费者属性，以及创建FlinkKafkaConsumer对象
+            // TODO 2、配置Kafka消费者属性，以及创建`Flink`KafkaConsumer对象
             // Kafka消费主题
             String topic = "first";
     
@@ -1209,14 +1209,14 @@ Flink框架并没有为Kafka数据源提供内嵌的实现方法，因此只能�
             kafkaProperties.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");  // value的反序列化
             kafkaProperties.put("auto.offset.reset", "latest"); // 消费偏移量，最新处开始
     
-            FlinkKafkaConsumer<String> stringFlinkKafkaConsumer = new FlinkKafkaConsumer<String>(
+            `Flink`KafkaConsumer<String> string`Flink`KafkaConsumer = new `Flink`KafkaConsumer<String>(
                     topic,
                     new SimpleStringSchema()
                     , kafkaProperties
             );
     
             // TODO 3、读取Kafka数据源
-            DataStreamSource<String> stringKafkaDS = env.addSource(stringFlinkKafkaConsumer);
+            DataStreamSource<String> stringKafkaDS = env.addSource(string`Flink`KafkaConsumer);
     
             // TODO 4、打印数据流到控制台
             stringKafkaDS.print();
@@ -1227,11 +1227,11 @@ Flink框架并没有为Kafka数据源提供内嵌的实现方法，因此只能�
     }
     ```
 
--   **在Kafka生产者端随意发送消息，查看IDEA控制台打印结果**
+-   **在`Kafka`生产者端随意发送消息，查看`IDEA`控制台打印结果**
 
-### 4.2.5 自定义Source
+### 4.2.5 自定义`Source`
 
-在测试时，如果以上现有Source的实现还不能满足需求，那么可以自定义Source，并通过流执行环境调用`addSource()`方法，读取自定义数据源。
+在测试时，如果以上现有`Source`的实现还不能满足需求，那么可以自定义`Source`，并通过流执行环境调用`addSource()`方法，读取自定义数据源。
 
 具体步骤为，自定义类实现`SourceFunction`接口，并重写其两个抽象方法`run()`和`cancel()`。
 
@@ -1267,16 +1267,16 @@ Flink框架并没有为Kafka数据源提供内嵌的实现方法，因此只能�
 >   }
 >   ```
 >
->   **Flink POJO类的特点：**
+>   **`Flink POJO`类的特点：**
 >
 >   -   共有类
 >   -   共有属性
 >   -   无参构造器
 >   -   属性可序列化
 >
->   Flink会将具有这些特点的类作为一种特殊的POJO数据类型来对待，以便于数据的解析和序列化。类中重写toString()方法只是为了便于测试观察数据。
+>   `Flink`会将具有这些特点的类作为一种特殊的`POJO`数据类型来对待，以便于数据的解析和序列化。类中重写`toString()`方法只是为了便于测试观察数据。
 >
->   POJO类类似于Scala中的样例类。
+>   `POJO`类类似于`Scala`中的样例类。
 
 **自定义数据源：**
 
@@ -1398,53 +1398,53 @@ public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction
 }
 ```
 
->**==Flink的数据类型系统==**
+>**==`Flink`的数据类型系统==**
 >
->Flink是一个分布式流式数据处理框架，其在处理数据时，必不可少的需要对数据进行网络传输和溢写磁盘，那么Flink就需要对数据进行序列化和反序列化，因此Flink必须要知道所处理的数据的数据类型是什么。
+>`Flink`是一个分布式流式数据处理框架，其在处理数据时，必不可少的需要对数据进行网络传输和溢写磁盘，那么`Flink`就需要对数据进行序列化和反序列化，因此`Flink`必须要知道所处理的数据的数据类型是什么。
 >
->Flink有自己一整套类型系统。Flink使用`TypeInformation`来统一表示数据类型。`TypeInformation`类是Flink中所有类型描述符的基类。它涵盖了类型的一些基本属性，并为每个数据类型生成特定的序列化器、反序列化器和比较器。
+>`Flink`有自己一整套类型系统。`Flink`使用`TypeInformation`来统一表示数据类型。`TypeInformation`类是`Flink`中所有类型描述符的基类。它涵盖了类型的一些基本属性，并为每个数据类型生成特定的序列化器、反序列化器和比较器。
 >
->Flink支持的数据类型：
+>`Flink`支持的数据类型：
 >
->-   基本类型：所有 Java 基本类型及其包装类，再加上`Void`、 `String`、 `Date`、 `BigDecimal`和`BigInteger`
->-   数组类型：包括基本类型数组（PRIMITIVE_ARRAY）和对象数组(OBJECT_ARRAY)  
+>-   基本类型：所有 `Java `基本类型及其包装类，再加上`Void`、 `String`、 `Date`、 `BigDecimal`和`BigInteger`
+>-   数组类型：包括基本类型数组`PRIMITIVE_ARRAY`和对象数组`OBJECT_ARRAY`
 >-   复杂数据类型：
->    -   Java 元组类型（TUPLE）：这是Flink内置的元组类型，是Java API的一部分。最多25个字段，也就是从`Tuple0`~`Tuple25`，不支持空字段
->    -   Scala 样例类及Scala元组：不支持空字段
->    -   行类型（ROW）：可以认为是具有任意个字段的元组,并支持空字段
->    -   POJO： Flink自定义的类似于Java bean模式的类
+>    -   `Java `元组类型`TUPLE`：这是`Flink`内置的元组类型，是`Java API`的一部分。最多`25`个字段，也就是从`Tuple0 ~ Tuple25`，不支持空字段
+>    -   `Scala `样例类及`Scala`元组：不支持空字段
+>    -   行类型`ROW`：可以认为是具有任意个字段的元组,并支持空字段
+>    -   `POJO`： `Flink`自定义的类似于`Java bean`模式的类
 >-   辅助类型：`Option`、 `Either`、 `List`、 `Map` 等
->-   泛型类型（GENERIC）
+>-   泛型类型`GENERIC`
 >
->POJO类型的定义：
+>`POJO`类型的定义：
 >
 >-   类是`public`和独立的，即也没有非静态的内部类
 >-   拥有`public`的无参构造器
->-   类中的所有字段是`public`且非`final`的；或者有一个公共的getter和setter方法，这些方法需要符合Java bean的命名规范
+>-   类中的所有字段是`public`且非`final`的；或者有一个公共的`getter`和`setter`方法，这些方法需要符合`Java bean`的命名规范
 >
->Flink支持任意Java和Scala类作为其数据类型。但是如果这些类没有按照POJO的格式进行定义，就会被Flink当作泛型来处理，此时，Flink只能获取泛型的外部数据类型，对类内部属性的数据类型无法获取，进而导致泛型擦除，并且这些内部属性的数据类型将不会由Flink进行序列化，而是由Kryo进行序列化。
+>`Flink`支持任意`Java`和`Scala`类作为其数据类型。但是如果这些类没有按照`POJO`的格式进行定义，就会被`Flink`当作泛型来处理，此时，`Flink`只能获取泛型的外部数据类型，对类内部属性的数据类型无法获取，进而导致泛型擦除，并且这些内部属性的数据类型将不会由`Flink`进行序列化，而是由`Kryo`进行序列化。
 >
 >因此，对数据类型的使用，建议如下：
 >
 >-   简单数据类型，按需使用相应的包装类以及`Void`、 `String`、 `Date`、 `BigDecimal`和`BigInteger`
 >
->-   复杂数据类型，一律申明成POJO类。
+>-   复杂数据类型，一律申明成`POJO`类。
 >
->-   Tuple类型较为特殊，简单的元组类型，其泛型正常申明即可。对于嵌套元组，需要使用Flink提供的`TypeHint`类。`TypeHint`类能够捕获泛型的类型信息，并一直记录下来，为运行时提供足够的信息。在使用时，通过调用`returns()`方法，明确指定DataStream中元素的数据类型。
+>-   `Tuple`类型较为特殊，简单的元组类型，其泛型正常申明即可。对于嵌套元组，需要使用`Flink`提供的`TypeHint`类。`TypeHint`类能够捕获泛型的类型信息，并一直记录下来，为运行时提供足够的信息。在使用时，通过调用`returns()`方法，明确指定`DataStream`中元素的数据类型。
 >
 >    ```java
 >    .returns(new TypeHint<Tuple2<Integer, SomeType>>(){})
 >    ```
 
-## 4.3、Transformation Operator 
+## 4.3、`Transformation Operator `
 
-从数据源读取到数据之后，就可以调用各种Transformation Operator，将DataStream转换成新的DataStream，进行实现业务的处理逻辑。
+从数据源读取到数据之后，就可以调用各种`Transformation Operator`，将`DataStream`转换成新的`DataStream`，进行实现业务的处理逻辑。
 
-**==正如上述所说，Flink是一个分部式大数据处理框架，对数据的数据类型非常关注。在Flink程序中，几乎每一处都涉及到泛型的使用，常用于标注输入数据、输出数据、中间状态等数据的数据类型，因此，请在编写Flink程序时，留意泛型的含义，特别是算子中传入的接口的泛型，因为这些接口的实现类对象就是数据处理的逻辑，其中的泛型决定了输入输出数据的数据类型。==**
+**==正如上述所说，Flink是一个分部式大数据处理框架，对数据的数据类型非常关注。在`Flink`程序中，几乎每一处都涉及到泛型的使用，常用于标注输入数据、输出数据、中间状态等数据的数据类型，因此，请在编写`Flink`程序时，留意泛型的含义，特别是算子中传入的接口的泛型，因为这些接口的实现类对象就是数据处理的逻辑，其中的泛型决定了输入输出数据的数据类型。==**
 
 ### 4.3.1 基本转换算子
 
-#### 4.3.1.1 映射—map
+#### 4.3.1.1 映射—`map`
 
 `map`，用于将数据流中的数据一一映射成新的数据，即，消费一个数据，就产出一个新的数据，不会多，也不会少。
 
@@ -1474,7 +1474,7 @@ public interface MapFunction<T, O> extends Function, Serializable {
 }
 ```
 
-**演示需求：获取每个访问事件WebPageAccessEvent的url**
+**演示需求：获取每个访问事件`WebPageAccessEvent`的`url`**
 
 ```Java
 /**
@@ -1530,9 +1530,9 @@ public class C006_MapTransformation {
 }
 ```
 
->**==说明一：Flink Transformation Operator对数据处理的基本思想==**
+>**==说明一：`Flink Transformation Operator`对数据处理的基本思想==**
 >
->**Flink是一个分布式流式数据处理框架，其数据处理过程的开启来自于事件触发，即Flink服务一直开启，来一条数据就会触发一次计算。正如前面所述，”铁打的算子，流水的数据“，Flink代码结构，由一系列算子构成，每一条数据到达一个算子时，算子就会执行一次，该数据就要被当前算子处理并加工一次，当前算子会将加工好的数据，再次发送到数据流中，然后由下游算子进行处理。在经过了所有的算子处理之后，得到的最终的形态，就是业务处理需求的最终结果。**
+>**`Flink`是一个分布式流式数据处理框架，其数据处理过程的开启来自于事件触发，即`Flink`服务一直开启，来一条数据就会触发一次计算。正如前面所述，”铁打的算子，流水的数据“，`Flink`代码结构，由一系列算子构成，每一条数据到达一个算子时，算子就会执行一次，该数据就要被当前算子处理并加工一次，当前算子会将加工好的数据，再次发送到数据流中，然后由下游算子进行处理。在经过了所有的算子处理之后，得到的最终的形态，就是业务处理需求的最终结果。**
 >
 >**==说明二：`map`算子对数据处理的过程==**
 >
@@ -1540,15 +1540,15 @@ public class C006_MapTransformation {
 >
 >**==说明三：实现`MapFunction`接口的方式选择：推荐使用匿名实现类的方式==**
 >
->**如演示需求所示，实现`MapFunction`接口，定义数据映射的方式有三种，一、自定义实现类；二、匿名实现类；三、使用lambda表达式。**
+>**如演示需求所示，实现`MapFunction`接口，定义数据映射的方式有三种，一、自定义实现类；二、匿名实现类；三、使用`lambda`表达式。**
 >
 >**推荐使用第二种匿名实现类，原因是，数据处理逻辑（此处是映射逻辑）一般只会使用一次，因此无需使用自定义实现类，如果多次使用同一种数据处理逻辑，那么可以将数据处理逻辑封装成一个类，即采用第一种方式自定义实现类。**
 >
->**对于lambda表达式，不推荐使用，原因有二，一、对于输入数据或输出数据是简单数据类型，即没有使用嵌套泛型或者POJO类附加泛型等复杂情况，lambda表达式确实使用简单，但是当输入数据或输出数据使用了复杂数据类型时，会出现泛型擦除的情况，此时需要对数据类型通过调用`returns()`方法做补充的说明，否则程序会报错。二、lambda表达式体现的是函数式编程思想，Java是面向对象编程思想，笔者希望程序能够从始至终都使用一种编程思想。所以不推荐使用lambda表达式，后续的演示示例也将会采用匿名实现类的方式。**
+>**对于`lambda`表达式，不推荐使用，原因有二，一、对于输入数据或输出数据是简单数据类型，即没有使用嵌套泛型或者`POJO`类附加泛型等复杂情况，`lambda`表达式确实使用简单，但是当输入数据或输出数据使用了复杂数据类型时，会出现泛型擦除的情况，此时需要对数据类型通过调用`returns()`方法做补充的说明，否则程序会报错。二、`lambda`表达式体现的是函数式编程思想，`Java`是面向对象编程思想，笔者希望程序能够从始至终都使用一种编程思想。所以不推荐使用`lambda`表达式，后续的演示示例也将会采用匿名实现类的方式。**
 
-#### 4.3.1.2 过滤—filter
+#### 4.3.1.2 过滤—`filter`
 
-`filter`，用于将符合条件的数据过滤出来。算子中，通过设置一个布尔条件表达式，对每一个元素进行判断，判断结果为true，那么就将元素正常发往下游，如果为false，那么就将被过滤掉。
+`filter`，用于将符合条件的数据过滤出来。算子中，通过设置一个布尔条件表达式，对每一个元素进行判断，判断结果为`true`，那么就将元素正常发往下游，如果为`false`，那么就将被过滤掉。
 
 **`filter()`方法的定义：**
 
@@ -1569,7 +1569,7 @@ public interface FilterFunction<T> extends Function, Serializable {
 }
 ```
 
-**演示需求：过滤出Bob用户的访问数据。**
+**演示需求：过滤出`Bob`用户的访问数据。**
 
 ```Java
 /**
@@ -1609,7 +1609,7 @@ public class C007_FilterTransformation {
 }
 ```
 
-#### 4.3.1.3 扁平映射—flatMap
+#### 4.3.1.3 扁平映射—`flatMap`
 
 `flatMap`，用于将每一个数据拆分成0个或多个数据，随后对这些数据进行转换处理。不同于`map`和`filter`，由于提前不确定会将数据拆分成多少个元素，因此，`flatMap`并不是默认地将数据自动发往下游，而是通过一个收集器`Collector`，由用户在需要发送数据的时候调用其`collect()`方法，`collect()`方法可以被调用一次或者多次。
 
@@ -1637,7 +1637,7 @@ public interface FlatMapFunction<T, O> extends Function, Serializable {
 }
 ```
 
-**需求演示：过滤掉Bob用户的数据，Anna用户的数据不做任何处理，直接发送下游，Carter用户的数据，删除其操作时间**
+**需求演示：过滤掉`Bob`用户的数据，`Anna`用户的数据不做任何处理，直接发送下游，`Carter`用户的数据，删除其操作时间**
 
 ```Java
 /**
@@ -1683,15 +1683,15 @@ public class C008_FlatMapTransformation {
 
 ### 4.3.2 聚合算子
 
-#### 4.3.2.0 数据分区—keyBy
+#### 4.3.2.0 数据分区—`keyBy`
 
-分组聚合，先分组，后聚合。不论是在Flink中，还是在Spark、Hadoop中，所有的聚合操作，都必须先对数据进行分组，因为，聚合只需要将符合条件的某一类数据进行聚合。对数据进行分组，能够有效提高聚合效率。
+分组聚合，先分组，后聚合。不论是在`Flink`中，还是在`Spark`、`Hadoop`中，所有的聚合操作，都必须先对数据进行分组，因为，聚合只需要将符合条件的某一类数据进行聚合。对数据进行分组，能够有效提高聚合效率。
 
-在Flink中，使用`keyBy()`方法对数据流进行分组，通过指定分组“键”，可以将一个数据流在逻辑层面划分成不同的分区，在物理层面，就是将具有不同“键”的数据分配到不同的Task Slot中，交由不同的并行子任务处理。
+在`Flink`中，使用`keyBy()`方法对数据流进行分组，通过指定分组“键”，可以将一个数据流在逻辑层面划分成不同的分区，在物理层面，就是将具有不同“键”的数据分配到不同的`Task Slot`中，交由不同的并行子任务处理。
 
-Flink在获取到用户指定的分组“键”后，将计算分组”键“的hash code，并对分区数取模，来确定数据将被发送到哪个分区中。所以，如果指定的key是POJO的话，必须要重写其`hashCode()`方法。
+`Flink`在获取到用户指定的分组“键”后，将计算分组”键“的`hash code`，并对分区数取模，来确定数据将被发送到哪个分区中。所以，如果指定的`key`是`POJO`的话，必须要重写其`hashCode()`方法。
 
-对于`keyBy()`方法所需要的分组”键“，有很多不同的方法来指定key，例如，对于Tuple类型的数据，可以通过指定位置或者多个位置的组合来指定分组”键“；对于POJO类型，只能指定名称来指定分组”键“；也可以使用lambda表达式或者实现一个`KeySelector`接口，用于指定分组”键“。
+对于`keyBy()`方法所需要的分组”键“，有很多不同的方法来指定`key`，例如，对于`Tuple`类型的数据，可以通过指定位置或者多个位置的组合来指定分组”键“；对于`POJO`类型，只能指定名称来指定分组”键“；也可以使用`lambda`表达式或者实现一个`KeySelector`接口，用于指定分组”键“。
 
 **==文档将统一通过实现`KeySelector`接口的方式来指定分组”键“。==**
 
@@ -1712,7 +1712,7 @@ public <K> KeyedStream<T, K> keyBy(KeySelector<T, K> key) {
 
 #### 4.3.2.1 简单聚合
 
-Flink基于`KeyedStream`数据流，内置了一些较为基本的聚合算子，这些算子在使用时，不需要像基本转换算子那样，实现自定义接口类对象，只需要指定聚合字段就可以了，指定聚合字段的方式有两种，一是指定位置，二是指定名称。对于Tuple类型的数据，两种方式均可以使用，在Tuple类型数据中，位置索引从0开始，字段的名称是f0, f1, f2, ...；对于POJO类型，只能通过字段名称进行指定，不能通过位置来指定，其中字段名称就是POJO的属性名称。
+`Flink`基于`KeyedStream`数据流，内置了一些较为基本的聚合算子，这些算子在使用时，不需要像基本转换算子那样，实现自定义接口类对象，只需要指定聚合字段就可以了，指定聚合字段的方式有两种，一是指定位置，二是指定名称。对于`Tuple`类型的数据，两种方式均可以使用，在`Tuple`类型数据中，位置索引从0开始，字段的名称是`f0`, `f1`, `f2`, ...；对于`POJO`类型，只能通过字段名称进行指定，不能通过位置来指定，其中字段名称就是`POJO`的属性名称。
 
 -   `sum()`：基于输入流，对指定字段做叠加求和操作
 -   `min()`/`minBy()`：基于输入流，对指定字段求最小值
@@ -1781,7 +1781,7 @@ public class C009_SimpleAggregationTransformation {
 
 #### 4.3.2.2 归约聚合
 
-归约聚合是相较于简单聚合更为一般的聚合逻辑，简单聚合是基于已有的数据进行的数据聚合，而归约聚合在已有数据的基础上还添加了一个用于集合的初始值，在聚合过程中，初始值和第一个数据进行聚合，得到的结果再与第二个数据进行聚合，依此类推。因此在聚合过程中，需要使用一个中间状态，保存聚合的中间值，此处的中间值的使用，在Flink中就叫做状态编程，中间值还有一个称呼，叫做累加器（Accumulator）。
+归约聚合是相较于简单聚合更为一般的聚合逻辑，简单聚合是基于已有的数据进行的数据聚合，而归约聚合在已有数据的基础上还添加了一个用于集合的初始值，在聚合过程中，初始值和第一个数据进行聚合，得到的结果再与第二个数据进行聚合，依此类推。因此在聚合过程中，需要使用一个中间状态，保存聚合的中间值，此处的中间值的使用，在Flink中就叫做状态编程，中间值还有一个称呼，叫做累加器（`Accumulator`）。
 
 **`reduce()`方法的定义：**
 
@@ -1813,7 +1813,7 @@ public interface ReduceFunction<T> extends Function, Serializable {
 }
 ```
 
-**演示示例：使用reduce实现maxBy()，求当前访问量最大的用户。**
+**演示示例：使用`reduce`实现`maxBy`()，求当前访问量最大的用户。**
 
 ```Java
 /**
@@ -1883,11 +1883,11 @@ public class C010_ReduceTransformation {
 }
 ```
 
-## 4.4、富函数（Rich Function）
+## 4.4、富函数（`Rich Function`）
 
 通过上述的演示示例，可以很清楚地看到Flink的程序结构：创建执行环境、获取数据源、数据处理操作、输出数据，最后执行流数据处理操作。
 
-也能够看到Flink地编码风格，都是基于DataStream调用一个方法，用来表示将要执行的数据处理操作。方法中需要传入一个参数，这个参数都需要实现一个接口，并重写其唯一的抽象方法，方法的逻辑即数据处理的逻辑。**为便于叙述，以下称这类接口为函数式接口，其的实现类成为函数类。**
+也能够看到`Flink`地编码风格，都是基于`DataStream`调用一个方法，用来表示将要执行的数据处理操作。方法中需要传入一个参数，这个参数都需要实现一个接口，并重写其唯一的抽象方法，方法的逻辑即数据处理的逻辑。**为便于叙述，以下称这类接口为函数式接口，其的实现类成为函数类。**
 
 进一步地，可以看到所有的接口名都是`xxxFunction`的形式，并且这些接口全都继承自`Function`接口，`Function`接口中并没有定义抽象方法，只是一个标识接口。
 
@@ -1924,8 +1924,8 @@ public interface RichFunction extends Function {
      * function.
      *
      * <p>The RuntimeContext also gives access to the {@link
-     * org.apache.flink.api.common.accumulators.Accumulator}s and the {@link
-     * org.apache.flink.api.common.cache.DistributedCache}.
+     * org.apache.`Flink`.api.common.accumulators.Accumulator}s and the {@link
+     * org.apache.`Flink`.api.common.cache.DistributedCache}.
      *
      * @return The UDF's runtime context.
      */
@@ -1956,7 +1956,7 @@ public interface RichFunction extends Function {
 **方法介绍：**
 
 -   **生命周期，指的是函数式接口的实现类对象的生命周期，从对象创建开始，到对象回收结束。每一个并行子任务都有自己的生命周期**
-    -   **`open()`方法，方法定义的逻辑会随着生命周期的开始而被执行。因此，类似于文件IO，数据库连接，配置文件读取等只需要进行一次的操作适合定义在`open()`方法中**
+    -   **`open()`方法，方法定义的逻辑会随着生命周期的开始而被执行。因此，类似于文件`IO`，数据库连接，配置文件读取等只需要进行一次的操作适合定义在`open()`方法中**
     -   **`close()`方法，方法定义的逻辑会随着生命周期的结束而被执行，因此，类似于关闭数据库连接，释放资源的操作适合定义在`close()`方法中**
 -   **运行时环境，指算子的并行子任务在运行时所处的环境，通过运行时环境的上下文对象，能够获取并行子任务相关的元数据信息，例如，并行子任务的名称、并行度、以及索引号。**
     -   **`getRuntimeContext()`方法，用于获取运行时上下文对象**
@@ -2021,19 +2021,19 @@ public class C011_RichMapFunction {
 }
 ```
 
-## 4.5、Flink的数据分区
+## 4.5、`Flink`的数据分区
 
-Flink的数据分区策略与Spark的分区策略相似，当上下游子任务的并行度不同时，那么必然会出现数据应该去往哪个分区的问题。Flink中针对数据分区的问题提供了5中策略，相应地内嵌了5种方法。
+`Flink`的数据分区策略与`Spark`的分区策略相似，当上下游子任务的并行度不同时，那么必然会出现数据应该去往哪个分区的问题。`Flink`中针对数据分区的问题提供了5中策略，相应地内嵌了5种方法。
 
-### 4.5.1 shuffle—随机分区
+### 4.5.1 `shuffle`—随机分区
 
 通过调用DataStream的`shuffle()`方法，将数据随机地分配到下游算子的并行任务中去。随机分区服从均匀分布，可以将数据均匀地发送到下游任务的并行子任务中。
 
-### 4.5.2 Round-Robin—轮询分区
+### 4.5.2 `Round-Robin`—轮询分区
 
-轮询分区，顾名思义，就是按顺序依次“发牌”。通过调用DataStream的`rebalance()`方法，可以将数据轮询重分区。轮询分区使用的是负载均衡算法，可以将输入流数据平均分配到下游的并行子任务中去。
+轮询分区，顾名思义，就是按顺序依次“发牌”。通过调用`DataStream`的`rebalance()`方法，可以将数据轮询重分区。轮询分区使用的是负载均衡算法，可以将输入流数据平均分配到下游的并行子任务中去。
 
-### 4.5.3 rescale—重缩放分区
+### 4.5.3 `rescale`—重缩放分区
 
 重缩放分区和轮询分区非常相似，其底层使用的也是轮询分区，但不同于轮询分区，是面向所有下游并行子任务进行“发牌”，重缩放分区只会面向下游部分并行子任务进行轮询“发牌”。
 
@@ -2047,13 +2047,13 @@ Flink的数据分区策略与Spark的分区策略相似，当上下游子任务�
 
 **另外，需要说明的是，轮询分区和重缩放分区的最为核心的不同点在于其并行子任务的连接机制不同。轮询分区时，上游所有的并行子任务都会与下游所有的并行子任务建立连接，而重缩放分区只会在进行数据分配的并行子任务之间建立连接。**
 
-### 4.5.4 broadcast—广播
+### 4.5.4 `broadcast`—广播
 
-广播是一种很重要的数据分配方式，而不是分区方式，因为经过广播之后，每一个分区都会保留一份数据。通过调用DataStream的`broadcast()`，可以将数据复制并发送到下游的每一个并行子任务中。
+广播是一种很重要的数据分配方式，而不是分区方式，因为经过广播之后，每一个分区都会保留一份数据。通过调用`DataStream`的`broadcast()`，可以将数据复制并发送到下游的每一个并行子任务中。
 
 更为重要的是，经过广播之后的数据流，称为广播流。
 
-### 4.5.5 global—全局分区
+### 4.5.5 `global`—全局分区
 
 全局分区也是一种特殊的分区方式。这种做法非常极端，通过调用`global()`方法，会将所有的输入流数据都发送到下游算子的第一个并行子任务中去。这就相当于强行让下游任务并行度变成了 1，会给下游算子的第一个并行子任务带来极大的压力。
 
@@ -2097,7 +2097,7 @@ public class Demo2 {
                 "hello java",
                 "hello scala",
                 "hello python",
-                "hello flink"
+                "hello `Flink`"
         );
 
         // 3、为每条数据附上一个key
@@ -2134,15 +2134,15 @@ public class Demo2 {
 }
 ```
 
-## 4.6、Sink Operator
+## 4.6、`Sink Operator`
 
-Flink与外部数据的交互，无论是读取数据，还是将数据写出到外部系统，都非常容易。但是问题在于，Flink是一个分布式实时流数据处理框架，对稳定性和容错性要求极高，当Flink与外部系统交互，出现故障时该如何处理？
+`Flink`与外部数据的交互，无论是读取数据，还是将数据写出到外部系统，都非常容易。但是问题在于，`Flink`是一个分布式实时流数据处理框架，对稳定性和容错性要求极高，当`Flink`与外部系统交互，出现故障时该如何处理？
 
-因此，对于读取数据，Flink内嵌了`addSource()`方法，对于写出数据，Flink相应的内嵌了`addSink()`方法。
+因此，对于读取数据，`Flink`内嵌了`addSource()`方法，对于写出数据，`Flink`相应的内嵌了`addSink()`方法。
 
 在之前的演示示例中，经常使用的`print()`方法就是一种`Sink`算子。
 
-Flink官方对常见的数据存储系统提供了预定义的Sink。
+`Flink`官方对常见的数据存储系统提供了预定义的`Sink`。
 
 ![image-20230313112343633](./03-Flink.assets/image-20230313112343633.png)
 
@@ -2150,20 +2150,20 @@ Flink官方对常见的数据存储系统提供了预定义的Sink。
 
 ### 4.6.1、写入到本地文件
 
-在较早的版本中，Flink提供了一些较为简单直接地将数据写入本地文件的方式，例如，`writeAsText()`、`writeAsCsv()`。但这些方法不支持同时写入一份文件，因此，降低了数据写入的效率，在后续版本中逐渐过时。
+在较早的版本中，`Flink`提供了一些较为简单直接地将数据写入本地文件的方式，例如，`writeAsText()`、`writeAsCsv()`。但这些方法不支持同时写入一份文件，因此，降低了数据写入的效率，在后续版本中逐渐过时。
 
-Flink为数据写入到本地文件专门提供了一个流式文件系统连接器：`StreamingFileSink`。`StreamingFileSink`继承自抽象类`RichSinkFunction`，并集成了Flink一致性检查点机制。
+`Flink`为数据写入到本地文件专门提供了一个流式文件系统连接器：`StreamingFileSink`。`StreamingFileSink`继承自抽象类`RichSinkFunction`，并集成了`Flink`一致性检查点机制。
 
 ```Java
 public class StreamingFileSink<IN> extends RichSinkFunction<IN> implements CheckpointedFunction, CheckpointListener {
 }
 ```
 
-`StreamingFileSink`为批处理和流处理提供了一个统一的Sink，它可以保证精确一次的状态一致性，大大改进了之前流式文件Sink的方式。它的主要操作是将数据写入桶（buckets），每个桶中的数据都可以分割成一个个大小有限的分区文件，这样一来就实现真正意义上的分布式文件存储。在代码中，可以通过各种配置来控制“分桶”的操作，默认的分桶方式是基于时间，每隔一个小时分一次桶。
+`StreamingFileSink`为批处理和流处理提供了一个统一的`Sink`，它可以保证精确一次的状态一致性，大大改进了之前流式文件`Sink`的方式。它的主要操作是将数据写入桶（`buckets`），每个桶中的数据都可以分割成一个个大小有限的分区文件，这样一来就实现真正意义上的分布式文件存储。在代码中，可以通过各种配置来控制“分桶”的操作，默认的分桶方式是基于时间，每隔一个小时分一次桶。
 
 >   **桶在本地文件中的体现是目录，分区文件是真正存储数据的文件。**
 
-`StreamingFileSink`支持行编码（Row-encoded）和批量编码（Bulk-encoded），不同的编码方式决定的数据的存储方式，行编码表示数据在存储过程中，一条数据占据一行；批量编码一般将数据进行列式存储，例如列式存储Parquet。
+`StreamingFileSink`支持行编码（`Row-encoded`）和批量编码（`Bulk-encoded`），不同的编码方式决定的数据的存储方式，行编码表示数据在存储过程中，一条数据占据一行；批量编码一般将数据进行列式存储，例如列式存储`Parquet`。
 
 两种不同的编码方式都有各自的构建器，通过`StreamingFileSink`调用不同的静态方法能够实现不同数据存储格式。
 
@@ -2221,13 +2221,13 @@ public class C012_WriteToLocalFileSink {
 
 ![image-20230313143842111](03-Flink.assets/image-20230313143842111.png)
 
-### 4.6.2、输出到Kafka
+### 4.6.2、输出到`Kafka`
 
-Flink预定义Source和Sink都对Kafka做了实现（都在`flink-connector-kafka-2.12`包中），并且Flink与Kafka的连接提供了端到端的精确一次性语义保证。因此Flink与Kafka通常都是成对出现。
+`Flink`预定义`Source`和`Sink`都对`Kafka`做了实现（都在`Flink-connector-kafka-2.12`包中），并且`Flink`与`Kafka`的连接提供了端到端的精确一次性语义保证。因此`Flink`与`Kafka`通常都是成对出现。
 
->   **Flink写出到Kafka时，在`addSink()`方法中，传入的参数是FlinkKafkaProducer，继承自抽象类TwoPhaseCommitSinkFunction，这是一个实现了“两阶段提交”的RichSinkFunction。两阶段提交提供了Flink向Kafka写入数据的事务型保证，能够真正做到精确一次性的状态一致性。**
+>   **`Flink`写出到`Kafka`时，在`addSink()`方法中，传入的参数是`FlinkKafkaProducer`，继承自抽象类`TwoPhaseCommitSinkFunction`，这是一个实现了“两阶段提交”的`RichSinkFunction`。两阶段提交提供了`Flink`向`Kafka`写入数据的事务型保证，能够真正做到精确一次性的状态一致性。**
 
-**演示示例：写入到Kafka**
+**演示示例：写入到`Kafka`**
 
 ```Java
 /**
@@ -2264,20 +2264,20 @@ public class C013_WriteToKafkaSink {
 }
 ```
 
-### 4.6.3、输出到Redis
+### 4.6.3、输出到`Redis`
 
-### 4.6.4、输出到Elasticsearch
+### 4.6.4、输出到`Elasticsearch`
 
-### 4.6.5、输出到MySQL（JDBC）
+### 4.6.5、输出到`MySQL（JDBC）`
 
-将数据写入到MySQL，以及其他JDBC协议的关系型数据库中，需要添加两项依赖，一是Flink的JDBC连接器，二是关系型数据库的JDBC 驱动。
+将数据写入到`MySQL`，以及其他`JDBC`协议的关系型数据库中，需要添加两项依赖，一是`Flink`的`JDBC`连接器，二是关系型数据库的`JDBC `驱动。
 
 ```xml
-<!-- Flink JDBC 连接器依赖包-->
+<!-- `Flink` JDBC 连接器依赖包-->
 <dependency>
-    <groupId>org.apache.flink</groupId>
-    <artifactId>flink-connector-jdbc_${scala.binary.version}</artifactId>
-    <version>${flink.version}</version>
+    <groupId>org.apache.`Flink`</groupId>
+    <artifactId>`Flink`-connector-jdbc_${scala.binary.version}</artifactId>
+    <version>${`Flink`.version}</version>
 </dependency>
 <!-- MySQL依赖包 -->
 <dependency>
@@ -2287,7 +2287,7 @@ public class C013_WriteToKafkaSink {
 </dependency>
 ```
 
-**演示示例，将数据写入到MySQL**
+**演示示例，将数据写入到`MySQL`**
 
 ```Java
 /**
@@ -2333,27 +2333,27 @@ public class C014_WriteToMySQLSink {
 }
 ```
 
-### 4.6.6、输出到HDFS
+### 4.6.6、输出到`HDFS`
 
-### 4.6.7、自定义Sink
+### 4.6.7、自定义`Sink`
 
-在进行自定义Sink地时候需要考虑从一致性检查点进行故障恢复的问题，对于开发者而言这是较为复杂的事情，因此，不建议自定义Sink。如果需求特殊，必须进行自定义Sink，那么只能牺牲一定的数据准确性。
+在进行自定义`Sink`地时候需要考虑从一致性检查点进行故障恢复的问题，对于开发者而言这是较为复杂的事情，因此，不建议自定义`Sink`。如果需求特殊，必须进行自定义`Sink`，那么只能牺牲一定的数据准确性。
 
 # 五、时间语义、水位线、窗口
 
-Flink是一个分布式流式数据处理框架，分布式设计带来了更高的吞吐量，而流式数据处理对Flink系统在时间处理方面提出了更高的要求。
+`Flink`是一个分布式流式数据处理框架，分布式设计带来了更高的吞吐量，而流式数据处理对`Flink`系统在时间处理方面提出了更高的要求。
 
-**Flink中的时间语义：**
+**`Flink`中的时间语义：**
 
 -   **事件时间：是指数据生成时的时间。**
--   **摄入时间：数据进入Flink系统时的时间**
--   **处理时间：是指数据被Flink系统处理时的时间**
+-   **摄入时间：数据进入`Flink`系统时的时间**
+-   **处理时间：是指数据被`Flink`系统处理时的时间**
 
-**在Flink中，时间的单位都是毫秒。**
+**在`Flink`中，时间的单位都是毫秒。**
 
-**==Flink官方建议使用事件时间==**
+**==`Flink`官方建议使用事件时间==**
 
-**水位线：Flink中用来衡量数据流进展的标记，称作“水位线（Watermark）”。**
+**水位线：`Flink`中用来衡量数据流进展的标记，称作“水位线（`Watermark`）”。**
 
 水位线是一种特殊的数据，是插入数据流中的一个标记点，其内容是一个时间戳。
 
@@ -2372,9 +2372,9 @@ Flink是一个分布式流式数据处理框架，分布式设计带来了更高
 
 水位线的生成需要依据数据的时间戳，因此水位线生成分为两步，第一步，为数据赋予时间戳，第二步，设置水位线生成策略，生成水位线。
 
-在DataStream API中，调用`assignTimestampAndWatermarks()`方法，用于为数据分配时间戳，以及设置水位线生成策略。Flink对有序数据流和无需数据流提供了内置的水位线生成策略，在使用过程中调用相应的方法即可。
+在`DataStream API`中，调用`assignTimestampAndWatermarks()`方法，用于为数据分配时间戳，以及设置水位线生成策略。`Flink`对有序数据流和无需数据流提供了内置的水位线生成策略，在使用过程中调用相应的方法即可。
 
-值得说明的是，Flink内置的水位线生成策略都是周期性生成水位线，周期时长是200ms。通过流执行环境的可以设置水位线生成周期：`env.getConfig().setAutoWatermarkInterval(300);`。
+值得说明的是，`Flink`内置的水位线生成策略都是周期性生成水位线，周期时长是`200 ms`。通过流执行环境的可以设置水位线生成周期：`env.getConfig().setAutoWatermarkInterval(300);`。
 
 **水位线生成代码演示：**
 
@@ -2396,7 +2396,7 @@ public class C015_GenerateWatermark {
         DataStreamSource<WebPageAccessEvent> webPageAccessEventDS = env.addSource(new WebPageAccessEventSource());
 
         // TODO 3、为数据赋予时间戳，并设置水位线生成策略
-        // Flink提供的两种水位线生成策略
+        // `Flink`提供的两种水位线生成策略
         // 有序数据流水位线生成
         SingleOutputStreamOperator<WebPageAccessEvent> watermarkGenerateWay1 = webPageAccessEventDS.assignTimestampsAndWatermarks(
                 // 泛型方法，泛型表示数据流中的数据类型
@@ -2446,7 +2446,7 @@ public class C015_GenerateWatermark {
 }
 ```
 
-当Flink内置的水位线生成策略无法满足的需求的时候，可以自定义水位线生成策略，但一般不建议。
+当`Flink`内置的水位线生成策略无法满足的需求的时候，可以自定义水位线生成策略，但一般不建议。
 
 **自定义水位线生成策略演示：**
 
@@ -2499,27 +2499,27 @@ public class Demo03 {
 
 水位线是一种特殊的标记，会随着数据在任务之间进行传递。如果不同算子之间的“依赖关系”是“窄依赖”，那么数据和水位线的传递就都很简单。但是生产环境中，不同算子之间的血缘关系并不是“窄依赖”，而是“宽依赖”，因此水位线的传递不是直传。
 
-下游算子的每一个并行子任务都将维护一个“List状态”，用于保存上游每个并行子任务传递的水位线，然后将“List状态”中的最小的水位线作为当前并行子任务的水位线，并且，会将更新后的水位线向下游广播。
+下游算子的每一个并行子任务都将维护一个“`List`状态”，用于保存上游每个并行子任务传递的水位线，然后将“`List`状态”中的最小的水位线作为当前并行子任务的水位线，并且，会将更新后的水位线向下游广播。
 
-在Flink中，水位线承担了时钟的角色。也就是说，如果需要知道现在时间推进到了什么时候，需要去查看当前任务的水位线。在后续的窗口操作中，窗口的闭合，以及定时器的出发都需要通过水位线来判断是否达到了触发的时间。
+在`Flink`中，水位线承担了时钟的角色。也就是说，如果需要知道现在时间推进到了什么时候，需要去查看当前任务的水位线。在后续的窗口操作中，窗口的闭合，以及定时器的出发都需要通过水位线来判断是否达到了触发的时间。
 
 水位线默认的计算公式是：水位线 = 观察到的最大事件事件 - 延时时间（数据乱序程度） - 1毫秒
 
 其中，减去1毫秒是为了在窗口操作中，将窗口的时间限定为左闭右开，这样就能避免不必要的歧义。
 
-在数据流开始之前，Flink会插入一个大小是`-Long.MAX_VALUE`的水位线，在数据流结束的时候，Flink会插入一个`Long.MAX_VALUE`的水位线，保证所有窗口闭合以及所有的定时器都被触发。
+在数据流开始之前，`Flink`会插入一个大小是`-Long.MAX_VALUE`的水位线，在数据流结束的时候，`Flink`会插入一个`Long.MAX_VALUE`的水位线，保证所有窗口闭合以及所有的定时器都被触发。
 
-对于有界数据流，Flink在读取数据的时候，会插入两次水位线，在最开始时插入`-Long.MAX_VALUE`的水位线，在最后插入`-Long.MAX_VALUE`的水位线，这样就能保证触发所有的定时器了。
+对于有界数据流，`Flink`在读取数据的时候，会插入两次水位线，在最开始时插入`-Long.MAX_VALUE`的水位线，在最后插入`-Long.MAX_VALUE`的水位线，这样就能保证触发所有的定时器了。
 
 ## 5.2、窗口操作
 
 ### 5.2.1 窗口基本介绍
 
-Flink定义时间语义和水位线，目的是为了对数据做基于时间的相关处理，其中最为常见的操作就是窗口操作。
+`Flink`定义时间语义和水位线，目的是为了对数据做基于时间的相关处理，其中最为常见的操作就是窗口操作。
 
-在前面的演示示例中，每当一条新的数据到来，经过Flink处理后就会处理该数据，并将处理结果输出（打印控制台）。然而当大量数据同时到来，频繁地更新结果，会给Flink系统带来很大的压力。对此，解决方法就是，收集一段时间的数据，然后定期更新结果，而不是每次新数据到来都更新数据。这其实就是开启了一个“窗口”，将符合条件的数据全部收集到之后，当达到一定条件就对“窗口”中的数据进行计算，并输出结果。
+在前面的演示示例中，每当一条新的数据到来，经过`Flink`处理后就会处理该数据，并将处理结果输出（打印控制台）。然而当大量数据同时到来，频繁地更新结果，会给`Flink`系统带来很大的压力。对此，解决方法就是，收集一段时间的数据，然后定期更新结果，而不是每次新数据到来都更新数据。这其实就是开启了一个“窗口”，将符合条件的数据全部收集到之后，当达到一定条件就对“窗口”中的数据进行计算，并输出结果。
 
-区别于Hive、Spark中数据窗口的理解，在Flink中，窗口是一个桶，数据到来后，如果数据满足这个桶的条件，那么这条数据就会被分配到这个桶中，数据源源不断的到来，时间也不断地向前推进，当到达窗口指定的时间后，窗口就会关闭，进而停止收集数据，然后触发计算并输出结果。
+区别于`Hive`、`Spark`中数据窗口的理解，在`Flink`中，窗口是一个桶，数据到来后，如果数据满足这个桶的条件，那么这条数据就会被分配到这个桶中，数据源源不断的到来，时间也不断地向前推进，当到达窗口指定的时间后，窗口就会关闭，进而停止收集数据，然后触发计算并输出结果。
 
 **窗口的分类：**
 
@@ -2528,17 +2528,17 @@ Flink定义时间语义和水位线，目的是为了对数据做基于时间的
     -   **滚动窗口：当滑动窗口的滑动步长等于窗口大小时，滑动窗口就成为了滚动窗口**
     -   **会话窗口：利用会话超时失效的机制来定义窗口。当第一条数据到来之后会开启会话窗口，如果在设置的会话超时时间内有数据到来，那么会话窗口就会一直开启，如果会话超时时间内没有接收到数据，那么会话窗口就会关闭。会话超时时间外的数据再次到来时，会开启新的超时会话窗口。在有迟到数据的情况下，会话窗口非常复杂。**
 -   **计数窗口：基于窗口收集到的数据的个数，来决定窗口的启停状态。**
--   **全局窗口：会把相同key的所有数据都分配到同一个窗口中，换句话说，就和没有分配窗口一样，因为窗口把所有数据都放到一起了。对于无界流数据，全局窗口没有结束的时候，因此不会触发计算，如果需要全局窗口进行计算处理，需要自定义触发器（Trigger）。计数窗口的底层实现是基于全局窗口。**
+-   **全局窗口：会把相同`key`的所有数据都分配到同一个窗口中，换句话说，就和没有分配窗口一样，因为窗口把所有数据都放到一起了。对于无界流数据，全局窗口没有结束的时候，因此不会触发计算，如果需要全局窗口进行计算处理，需要自定义触发器（`Trigger`）。计数窗口的底层实现是基于全局窗口。**
 
-### 5.2.2 窗口API介绍
+### 5.2.2 窗口`API`介绍
 
-在介绍窗口API前，先对数据流的分类做一个整理，数据流可以分为：键控流（Keyed-Stream）、非键控流（Non-Keyed-Stream）、广播流（Broadcast-Stream）。
+在介绍窗口`API`前，先对数据流的分类做一个整理，数据流可以分为：键控流（`Keyed-Stream`）、非键控流（`Non-Keyed-Stream`）、广播流（`Broadcast-Stream`）。
 
-在Flink中，虽然对键控流和非键控流都提供了相应的API，但Flink并不推荐使用非键控流，原因是，在一些场景下，非键控流会将所有的数据分配到一个并行子任务中，这会给Flink数据处理带来性能上的压力。因此，在不必要的情况下，都推荐使用键控流。
+在`Flink`中，虽然对键控流和非键控流都提供了相应的`API`，但`Flink`并不推荐使用非键控流，原因是，在一些场景下，非键控流会将所有的数据分配到一个并行子任务中，这会给`Flink`数据处理带来性能上的压力。因此，在不必要的情况下，都推荐使用键控流。
 
-无论是键控流还是非键控流，其窗口API的调用过程都是相同的，都是数据流调用API设置窗口类型（开窗口），随后调用窗口函数，定义窗口收集的数据的计算逻辑。
+无论是键控流还是非键控流，其窗口`API`的调用过程都是相同的，都是数据流调用`API`设置窗口类型（开窗口），随后调用窗口函数，定义窗口收集的数据的计算逻辑。
 
--   **键控流窗口API**
+-   **键控流窗口`API`**
 
 ```java 
 stream.keyBy(...)
@@ -2546,7 +2546,7 @@ stream.keyBy(...)
 	  .xxx(...)
 ```
 
--   **非键控流窗口API**
+-   **非键控流窗口`API`**
 
 ```java
 stream.windowAll(...)
@@ -2555,7 +2555,7 @@ stream.windowAll(...)
 
 -   **窗口分配器**
 
-在调用API开窗口时，需要传入一个`WindowAssigner`，即窗口分配器，Flink为上述介绍的窗口提供了不同的预定义，在程序开发时，只需根据需要进行调用即可。
+在调用`API`开窗口时，需要传入一个`WindowAssigner`，即窗口分配器，`Flink`为上述介绍的窗口提供了不同的预定义，在程序开发时，只需根据需要进行调用即可。
 
 ![image-20230317115859135](./03-Flink.assets/image-20230317115859135.png)
 
@@ -2599,7 +2599,7 @@ public interface AggregateFunction<IN, ACC, OUT> extends Function, Serializable 
 
 这些算子在窗口中对数据的处理也是一样的流程，都是来一条数据就计算一次结果，但不同于一般的流数据处理，在窗口中，数据的虽然是来一条就计算一次，但其计算结果用累加器保存，只有当窗口关闭，需要对外输出结果时，才会直接将累加器的结果对外输出。
 
-**演示示例：使用`reduce`窗口函数，每10秒计算一次用户的PV**
+**演示示例：使用`reduce`窗口函数，每10秒计算一次用户的`PV`**
 
 ```Java
 /**
@@ -2678,7 +2678,7 @@ public class C016_WindowAssignerAndReduce {
 }
 ```
 
-**演示示例：使用`aggregate`窗口函数计算PV/UV，即人均重复访问量**
+**演示示例：使用`aggregate`窗口函数计算`PV/UV`，即人均重复访问量**
 
 ```Java
 /**
@@ -2707,7 +2707,7 @@ public class C017_WindowAssignerAndAggregate {
                                 )
                 );
 
-        // TODO 3、由于需要计算全部站点的访问量，因此，需要将所有的用户访问都放在一个数据流中，又因为Flink推荐使用键控流，因此，此处将所有数据直接分到同一个组里面
+        // TODO 3、由于需要计算全部站点的访问量，因此，需要将所有的用户访问都放在一个数据流中，又因为`Flink`推荐使用键控流，因此，此处将所有数据直接分到同一个组里面
         SingleOutputStreamOperator<Double> aggregateDS = webPageAccessEventDS
                 .keyBy(
                         new KeySelector<WebPageAccessEvent, Boolean>() {
@@ -2787,7 +2787,7 @@ public interface WindowFunction<IN, OUT, KEY, W extends Window> extends Function
 
 **`WindowFunction`接口定义的抽象方法`apply()`有一个参数`input`，类型为`Iterable<IN>`，该参数即为进入当前窗口的所有数据构成的一个迭代器集合。另一个参数`window`，类型为`w`，改参数即为当前窗口对象，利用该参数调用相应的方法，能够获取当前窗口的相关信息。而参数`out`，类型为`Collettor<OUT>`，则是用于将数据向下游输出数据。**
 
-**演示示例：使用`WindowFunction`计算：每隔20秒统计一次UV**
+**演示示例：使用`WindowFunction`计算：每隔20秒统计一次`UV`**
 
 ```Java
 /**
@@ -2939,7 +2939,7 @@ public abstract class ProcessWindowFunction<IN, OUT, KEY, W extends Window> exte
 
 **==处理函数`ProcessWindowFunction`无法获取时间相关的服务，因此无法进行定时器相关的代码设计。==**
 
-**演示示例：使用`ProcessWindowFunction`计算：每隔20秒统计一次UV**
+**演示示例：使用`ProcessWindowFunction`计算：每隔20秒统计一次`UV`**
 
 ```Java
 /**
@@ -3012,7 +3012,7 @@ public class C019_WindowAssignerAndProcessWindowFunction {
 
 在数据收集的过程中，每到来一条数据都将调用一次增量窗口函数，对数据进行一次计算，并将结果保存到累加器中；等到窗口触发计算时，则将累加器的结果传递到全量窗口函数的迭代器中，随后对结果进行输出。因此在迭代器中只会有一个数据。
 
-**演示示例：增量窗口函数，全量窗口函数结合使用：统计10秒内，url的点击数量，每隔5秒更新一次结果。**
+**演示示例：增量窗口函数，全量窗口函数结合使用：统计10秒内，`url`的点击数量，每隔5秒更新一次结果。**
 
 ```Java
 /**
@@ -3180,7 +3180,7 @@ public class UrlClickCountWindow {
 }
 ```
 
-### 5.2.3 其他窗口API介绍
+### 5.2.3 其他窗口`API`介绍
 
 #### 5.2.3.1 触发器
 
@@ -3227,7 +3227,7 @@ public abstract class Trigger<T, W extends Window> implements Serializable {
 
     /**
      * Returns true if this trigger supports merging of trigger state and can therefore be used with
-     * a {@link org.apache.flink.streaming.api.windowing.assigners.MergingWindowAssigner}.
+     * a {@link org.apache.`Flink`.streaming.api.windowing.assigners.MergingWindowAssigner}.
      *
      * <p>If this returns {@code true} you must properly implement {@link #onMerge(Window,
      * OnMergeContext)}
@@ -3238,7 +3238,7 @@ public abstract class Trigger<T, W extends Window> implements Serializable {
 
     /**
      * Called when several windows have been merged into one window by the {@link
-     * org.apache.flink.streaming.api.windowing.assigners.WindowAssigner}.
+     * org.apache.`Flink`.streaming.api.windowing.assigners.WindowAssigner}.
      *
      * @param window The new window that results from the merge.
      * @param ctx A context object that can be used to register timer callbacks and access state.
@@ -3296,7 +3296,7 @@ public abstract class Trigger<T, W extends Window> implements Serializable {
          *
          * @param time The watermark at which to invoke {@link Trigger#onEventTime(long, Window,
          *     TriggerContext)}
-         * @see org.apache.flink.streaming.api.watermark.Watermark
+         * @see org.apache.`Flink`.streaming.api.watermark.Watermark
          */
         void registerEventTimeTimer(long time);
 
@@ -3372,9 +3372,9 @@ public abstract class Trigger<T, W extends Window> implements Serializable {
 `Trigger`类中主要定义了四个抽象方法，和一个上下文接口，对于Flink预定义的`WindowAssigner`都提供了对应的`Trigger`实现。
 
 -   **`onElement()`：窗口中，每到来一条数据都会调用一次该方法，方法返回值将决定窗口的生命周期**
--   **`onProcessingTime()：在窗口中，每当处理时间定时器到达时，将调用该方法，方法返回值将决定窗口的生命周期`**
--   **`onEventTime()：在窗口中，每当事件时间定时器到达时，将调用该方法，方法返回值将决定窗口的生命周期`**
--   **`clear()：当窗口关闭时，将调用该方法，一般用于清理窗口状态`**
+-   **`onProcessingTime()`：在窗口中，每当处理时间定时器到达时，将调用该方法，方法返回值将决定窗口的生命周期**
+-   **`onEventTime()`：在窗口中，每当事件时间定时器到达时，将调用该方法，方法返回值将决定窗口的生命周期**
+-   **`clear()`：当窗口关闭时，将调用该方法，一般用于清理窗口状态`**
 -   **`TriggerContext`接口，是触发器上下文接口，通过该接口可以获取当前的处理时间，水位线等，还可以注册定时器**
 
 `TriggerResult`类，是`onElement()`、`onProcessingTime()`、`onEventTime()`三个方法的返回值类型，其本身是一个枚举类，用于定义窗口的生命周期。
@@ -3462,7 +3462,7 @@ stream.keyBy(...)
 
 #### 5.2.3.4 侧输出流
 
-到目前为止，Flink对于“迟到”数据的处理，有两种处理方案，一是在设置水位线生成策略时，设置数据的乱序程度，这相当于数据流流速不变，但时间变慢了一定程度；二是在窗口计算时，设置窗口的延迟时间，增加窗口等待数据的时间，这相当于让窗口多等待一会数据。然而，窗口不能一直等待数据，总会存在窗口关闭后才到来的“迟到”数据，为了保证数据计算的准确性，Flink还提供了窗口关闭后“迟到”数据的处理方案。
+到目前为止，`Flink`对于“迟到”数据的处理，有两种处理方案，一是在设置水位线生成策略时，设置数据的乱序程度，这相当于数据流流速不变，但时间变慢了一定程度；二是在窗口计算时，设置窗口的延迟时间，增加窗口等待数据的时间，这相当于让窗口多等待一会数据。然而，窗口不能一直等待数据，总会存在窗口关闭后才到来的“迟到”数据，为了保证数据计算的准确性，Flink还提供了窗口关闭后“迟到”数据的处理方案。
 
 侧输出流，将迟到的数据收集起来，作为另一条数据流，向下游发送。
 
@@ -3486,13 +3486,13 @@ DataStream ds = new_stream.getSideOutput(outputTag)
 
 # 六、处理函数
 
-Flink核心API对数据流的处理都是具体的，`map`算子用于对数据流进行映射，`filter`算子用于对数据流进行过滤等等。除了这些核心API，Flink还提供了更为底层的API，即处理函数。处理函数不定义任何数据处理的操作，只提炼出一个统一的处理操作的入口，向用户提供数据流中最基本元素：数据元素（event）、运行时上下文（context），运行时上下文能够提供时间（time）、状态（state）。处理函数相当于向用户提供了对数据流的所有信息以及控制权限，用户有了所有的信息以及权限，因此可以做任何的数据处理，实现业务需求。
+`Flink`核心`API`对数据流的处理都是具体的，`map`算子用于对数据流进行映射，`filter`算子用于对数据流进行过滤等等。除了这些核心`API`，`Flink`还提供了更为底层的`API`，即处理函数。处理函数不定义任何数据处理的操作，只提炼出一个统一的处理操作的入口，向用户提供数据流中最基本元素：数据元素（`event`）、运行时上下文（`context`），运行时上下文能够提供时间（`time`）、状态（`state`）。处理函数相当于向用户提供了对数据流的所有信息以及控制权限，用户有了所有的信息以及权限，因此可以做任何的数据处理，实现业务需求。
 
 ![image-20230421102224255](./03-Flink.assets/image-20230421102224255.png)
 
 ## 6.1、处理函数分类
 
-Flink中已知的数据流类型：
+`Flink`中已知的数据流类型：
 
 -   **读取数据源获得的数据流：`DataStream`**
 -   **`DataStream`调用`keyBy()`方法后得到的键控流：`KeyedStream`**
@@ -3504,7 +3504,7 @@ Flink中已知的数据流类型：
 
 不同的数据流都可以直接调用`process()`方法，传入处理函数用于对数据进行处理。不同的流调用`process()`方法，传入的处理函数的本质基本相同，但不同的处理函数还是有着一些细微的差别。
 
-Flink提供了8个处理函数，分别对应不同数据流调用`process()`方法需要传入的处理函数。
+`Flink`提供了8个处理函数，分别对应不同数据流调用`process()`方法需要传入的处理函数。
 
 -   **`ProcessFuntion`：基本处理函数，`DataStream`调用`process()`方法时需要传入的参数类型**
 -   **`KeyedProcessFuntion`：`KeyedStream`调用`process()`方法时需要传入的参数类型**
@@ -3521,7 +3521,7 @@ Flink提供了8个处理函数，分别对应不同数据流调用`process()`方
 
 ![AbstractRichFunction](./03-Flink.assets/AbstractRichFunction.png)
 
-## 6.2、ProcessFunction
+## 6.2、`ProcessFunction`
 
 **`ProcessFunction`的定义**
 
@@ -3658,9 +3658,9 @@ public class C021_ProcessFunction {
 }
 ```
 
-**说明：第60行注册定时器的代码在运行时会报错：`Caused by: java.lang.UnsupportedOperationException: Setting timers is only supported on a keyed streams.`。表明`ProcessFunction`无法使用定时服务，实际上，在Flink中，所有非键控流的处理函数都无法使用定时服务。**
+**说明：第60行注册定时器的代码在运行时会报错：`Caused by: java.lang.UnsupportedOperationException: Setting timers is only supported on a keyed streams.`。表明`ProcessFunction`无法使用定时服务，实际上，在`Flink`中，所有非键控流的处理函数都无法使用定时服务。**
 
-## 6.3、KeyedProcessFunction
+## 6.3、`KeyedProcessFunction`
 
 **`KeyedProcessFunction`定义**
 
@@ -3795,13 +3795,13 @@ public class C022_KeyedProcessFunction {
 }
 ```
 
-**综合应用：统计最近10秒内访问量最高的n个url，每隔5s更新一次计算结果**
+**综合应用：统计最近10秒内访问量最高的`n`个`url`，每隔`5 s`更新一次计算结果**
 
 ```Java
 
 ```
 
-## 6.4、ProcessAllWindowFunction
+## 6.4、`ProcessAllWindowFunction`
 
 **`ProcessAllWindowFunction`的定义**
 
@@ -3841,7 +3841,7 @@ public abstract class ProcessAllWindowFunction<IN, OUT, W extends Window> extend
 
 **`ProcessAllWindowFunction`的`Context`内部类中并没有定义获取时间服务`TimerService`的方法，因此`ProcessAllWindowFunction`并不能使用时间服务，但这并不代表`ProcessAllWindowFunction`中没有时间服务。窗口本身就具备时间属性，其定时器在Flink内部已经定义好，即窗口结束时间。如果开发者需要自定义定时器该怎么办呢？可以基于`WindowedStream`调用`trigger()`方法，进行触发器的定义。**
 
-## 6.5、ProcessWindowFunction
+## 6.5、`ProcessWindowFunction`
 
 **`ProcessWindowFunction`的定义**
 
@@ -3873,35 +3873,35 @@ public abstract class ProcessWindowFunction<IN, OUT, KEY, W extends Window> exte
 
 **可以看到，`ProcessWindowFunction`的定义与`ProcessAllWindowFunction`几乎完全一样，只多出一个泛型`K`。**
 
-## 6.6 CoProcessFunction
+## 6.6 `CoProcessFunction`
 
-## 6.7 ProcessJoinFunction
+## 6.7 `ProcessJoinFunction`
 
-## 6.8 BroadcastProcessFunction
+## 6.8 `BroadcastProcessFunction`
 
-## 6.9 KeyedBroadcastProcessFunction
+## 6.9 `KeyedBroadcastProcessFunction`
 
 # 七、状态编程
 
-在流处理中，数据是连续不断的到来和计算的，每个任务进行计算处理时，可以基于当前数据直接转换得到输出结果；有时又需要依赖已有的数据进行结果的计算，这些数据将由算子的任务进行维护，被称为Flink任务的状态。
+在流处理中，数据是连续不断的到来和计算的，每个任务进行计算处理时，可以基于当前数据直接转换得到输出结果；有时又需要依赖已有的数据进行结果的计算，这些数据将由算子的任务进行维护，被称为`Flink`任务的状态。
 
-Flink任务的状态存储在内存中，相当于时子任务示例上的一个本地变量，能够被任务的业务逻辑访问和修改。但状态又不完全等同于`JVM`的本地变量，大数据场景下，必须使用分布式架构来做扩展，在低延时、高吞吐的基础上还需要保证任务的容错性，由此将带来一些列的问题。
+`Flink`任务的状态存储在内存中，相当于时子任务示例上的一个本地变量，能够被任务的业务逻辑访问和修改。但状态又不完全等同于`JVM`的本地变量，大数据场景下，必须使用分布式架构来做扩展，在低延时、高吞吐的基础上还需要保证任务的容错性，由此将带来一些列的问题。
 
--   状态的访问权限：Flink中，同一个并行子任务中可能会包含不同`key`的数据，这些数据同时访问和更改本地变量，将导致计算结果出错，因此状态不是单纯的本地变量
+-   状态的访问权限：`Flink`中，同一个并行子任务中可能会包含不同`key`的数据，这些数据同时访问和更改本地变量，将导致计算结果出错，因此状态不是单纯的本地变量
 -   容错性：状态是保存在内存中，用于数据的高效计算，但只保存在内存中使得数据并不可靠，因此还需要对状态进行持久化保存，以便于状态的故障恢复
 -   状态的扩展性：当任务的并行度进行调整（增大或者减小）时，还需要考虑到状态的重组调整
 
-状态的管理并不是意见容易的事情，因此Flink本身已经预实现了一套完整的状态管理机制，将底层的核心功能全部封装起来，包括状态的高效存储和访问、持久化保存和故障恢复，以及资源调整时，状态的再分配。开发者使用Flink状态编程时，只需要调用相应的API即可方便的使用状态，或者配置状态的容错机制，进行将更多的精力放在业务逻辑上。
+状态的管理并不是意见容易的事情，因此`Flink`本身已经预实现了一套完整的状态管理机制，将底层的核心功能全部封装起来，包括状态的高效存储和访问、持久化保存和故障恢复，以及资源调整时，状态的再分配。开发者使用Flink`状态`编程时，只需要调用相应的`API`即可方便的使用状态，或者配置状态的容错机制，进行将更多的精力放在业务逻辑上。
 
 ## 7.1、状态的分类
 
-Flink状态可以分为两大类，Managed State和Raw State。Managed State由Flink统一管理，状态的存储和访问、故障恢复和重组等问题由Flink实现，开发者只需要调用相应接口使用状态即可；Raw State则是开发者自定义的状态，所有与状态相关的问题都由开发者进行实现。
+`Flink`状态可以分为两大类，`Managed State`和`Raw State`。`Managed State`由`Flink`统一管理，状态的存储和访问、故障恢复和重组等问题由`Flink`实现，开发者只需要调用相应接口使用状态即可；`Raw State`则是开发者自定义的状态，所有与状态相关的问题都由开发者进行实现。
 
-Managed State又可分为键控状态（Keyed State）和算子状态（Operator State），二者的区别在于状态的作用范围以及状态的类型不同。前者的作用范围为每一个`key`，状态类型有5种；后者的作用范围为并行子任务，状态类型只有3种。
+`Managed State`又可分为键控状态`Keyed State`和算子状态`Operator State`，二者的区别在于状态的作用范围以及状态的类型不同。前者的作用范围为每一个`key`，状态类型有5种；后者的作用范围为并行子任务，状态类型只有3种。
 
-![flink-state-classify](./03-Flink.assets/flink-state-classify-16822326210132.png)
+![Flink-state-classify](./03-Flink.assets/Flink-state-classify-16822326210132.png)
 
-## 7.2、Keyed State
+## 7.2、`Keyed State`
 
 `Keyed State`是并行子任务按照`key`来访问和维护的状态，各状态之间以`key`进行隔离。在底层`Keyed State`类似于一个分布式的`Map`数据结构，所有的状态会根据`key`保存成`key-value`的形式，当一条数据到来时，任务就会自动将状态的访问范围限定为当前`key`，从`Map`结构种读取相应的状态值。
 
@@ -4079,7 +4079,7 @@ public class Demo04 {
 
 ![StateDescriptor](./03-Flink.assets/StateDescriptor.png)
 
-### 7.2.0 State接口
+### 7.2.0 `State`接口
 
 **`State`接口的继承结构：**
 
@@ -4122,7 +4122,7 @@ public interface AppendingState<IN, OUT> extends State {
 
 **`MergingState`接口是一个空接口。**
 
-### 7.2.1 ValueState
+### 7.2.1 `ValueState`
 
 **`ValueState`接口直接继承自`State`接口**
 
@@ -4150,7 +4150,7 @@ public interface ValueState<T> extends State {
 
 **==由于`ValueState`继承了`State`接口，因此还可以使用`clear()`方法进行状态重置。==**
 
-**演示示例：统计每个用户的PV数据，从第一条数据到来开始，每隔10s输出一次结果**
+**演示示例：统计每个用户的`PV`数据，从第一条数据到来开始，每隔`10 s`输出一次结果**
 
 ```java
 /**
@@ -4231,7 +4231,7 @@ public class C024_ValueState {
 }
 ```
 
-### 7.2.2 ListState
+### 7.2.2 `ListState`
 
 **`ListStateDescriptor`定义方式：**
 
@@ -4269,7 +4269,7 @@ public interface ListState<T> extends MergingState<T, Iterable<T>> {
 
 ```
 
-### 7.2.3 MapState
+### 7.2.3 `MapState`
 
 **`MapState`接口直接继承自`State`接口**
 
@@ -4450,7 +4450,7 @@ public class C026_MapState {
 }
 ```
 
-### 7.2.4 AggregatingState
+### 7.2.4 `AggregatingState`
 
 ![AggregatingState](./03-Flink.assets/AggregatingState.png)
 
@@ -4458,7 +4458,7 @@ public class C026_MapState {
 
 ### 7.2.5 状态生存时间
 
-在实际应用中， 很多状态会随着时间推移主键增长，如果不加以限制，最终将导致内存空间耗尽。一个常见的优化思路是直接在Flink代码中调用`clear()`方法清理掉状态。但是，有时候业务需求要求代码逻辑不能直接删除状态，为了应对这种场景，Flink为状态添加了一个属性`time-to-live,TTL`，即状态的生存时间，当状态在内存中的非活跃时间超过了状态的生存时间，那么该状态就会被打上已失效的标签。
+在实际应用中， 很多状态会随着时间推移主键增长，如果不加以限制，最终将导致内存空间耗尽。一个常见的优化思路是直接在`Flink`代码中调用`clear()`方法清理掉状态。但是，有时候业务需求要求代码逻辑不能直接删除状态，为了应对这种场景，`Flink`为状态添加了一个属性`time-to-live,TTL`，即状态的生存时间，当状态在内存中的非活跃时间超过了状态的生存时间，那么该状态就会被打上已失效的标签。
 
 在实际的处理过程中，在状态创建的时候，状态的失效时间 =  当前时间 + 状态生存时间，之后如果有对状态的访问和修改，那么可以再对失效时间进行更新。当设置的状态清除条件被触发时，就可以判断状态是否失效，从而进行状态的清除。
 
@@ -4503,7 +4503,7 @@ public class StateTtlConfig implements Serializable {
     public enum TtlTimeCharacteristic {
         /**
          * Processing time, see also <code>
-         * org.apache.flink.streaming.api.TimeCharacteristic.ProcessingTime</code>.
+         * org.apache.`Flink`.streaming.api.TimeCharacteristic.ProcessingTime</code>.
          */
         ProcessingTime
     }
@@ -4702,7 +4702,7 @@ public class StateTtlConfig implements Serializable {
          * Cleanup expired state while Rocksdb compaction is running.
          *
          * <p>RocksDB compaction filter will query current timestamp, used to check expiration, from
-         * Flink every time after processing {@code queryTimeAfterNumEntries} number of state
+         * `Flink` every time after processing {@code queryTimeAfterNumEntries} number of state
          * entries. Updating the timestamp more often can improve cleanup speed but it decreases
          * compaction performance because it uses JNI call from native code.
          *
@@ -4762,7 +4762,7 @@ public class StateTtlConfig implements Serializable {
 StateTtlConfig stateTtlConfig = StateTtlConfig.newBuilder(Time.hours(1))
                 .setUpdateType(StateTtlConfig.UpdateType.OnReadAndWrite) // 设置状态生存时间更新策略，此设置为：创建、读、写状态都修改状态的生存时间
                 .setStateVisibility(StateTtlConfig.StateVisibility.ReturnExpiredIfNotCleanedUp) // 设置状态的可见性，次设置为：如果访问失效状态，当状态未被清理，那么返回状态
-                .setTtlTimeCharacteristic(StateTtlConfig.TtlTimeCharacteristic.ProcessingTime) // 设置状态的时间语义，目前flink只支持处理时间语义
+                .setTtlTimeCharacteristic(StateTtlConfig.TtlTimeCharacteristic.ProcessingTime) // 设置状态的时间语义，目前`Flink`只支持处理时间语义
                 .build();
 ValueState<Long> longValueState = getRuntimeContext.getValueState(new ValueStateDescriptor<Long>("stateName", Long.class)
                 .enableTimeToLive(stateTtlConfig));
@@ -4770,11 +4770,11 @@ ValueState<Long> longValueState = getRuntimeContext.getValueState(new ValueState
 
 **==需要注意的是，所有集合类型的状态，例如，`ListState`，`MapState`，在设置`TTL`时，都是针对每一项元素的，也就是说，`ListState`中的每一个元素，都有自己的失效时间，当元素失效时，只会清理自身，不会对状态中的其他元素造成影响。==**
 
-## 7.3 Flink类型系统中的类
+## 7.3 `Flink`类型系统中的类
 
-`JVM`运行时会有泛型擦除，Flink无法准确地获取到数据类型，因此，在使用`Java API`的时候，需要手动指定类型，在使用`Scala API`时无需指定。
+`JVM`运行时会有泛型擦除，`Flink`无法准确地获取到数据类型，因此，在使用`Java API`的时候，需要手动指定类型，在使用`Scala API`时无需指定。
 
-### 7.3.1 TypeInformation
+### 7.3.1 `TypeInformation`
 
 `TypeInformation`是Flink类型系统的核心，是生成序列化和反序列化工具`Comparator`的工具类。同时还是连接`schema`和编程语言内部类型系统的桥梁。
 
@@ -4844,7 +4844,7 @@ public abstract class TypeInformation<T> implements Serializable {
         try {
             return TypeExtractor.createTypeInfo(typeClass);
         } catch (InvalidTypesException e) {
-            throw new FlinkRuntimeException(
+            throw new `Flink`RuntimeException(
                     "Cannot extract TypeInformation from Class alone, because generic parameters are missing. "
                             + "Please use TypeInformation.of(TypeHint) instead, or another equivalent method in the API that "
                             + "accepts a TypeHint instead of a Class. "
@@ -4886,11 +4886,11 @@ TypeInformation<WebPageAccessEvent> of = TypeInformation.of(new TypeHint<WebPage
 
 
 
-### 7.3.2 TypeHint
+### 7.3.2 `TypeHint`
 
 由于泛型类型在运行是会被`JVM`擦除掉，所以无法通过`TypeInformation`的`of()`方法指定带有泛型的类型。
 
-为了支持泛型类型，Flink引入了`TypeHint`。
+为了支持泛型类型，`Flink`引入了`TypeHint`。
 
 **`TypeHint`类的定义：**
 
@@ -4905,7 +4905,7 @@ public abstract class TypeHint<T> {
         try {
             this.typeInfo = TypeExtractor.createTypeInfo(this, TypeHint.class, getClass(), 0);
         } catch (InvalidTypesException e) {
-            throw new FlinkRuntimeException(
+            throw new `Flink`RuntimeException(
                     "The TypeHint is using a generic variable."
                             + "This is not supported, generic types must be fully specified for the TypeHint.");
         }
@@ -4952,9 +4952,9 @@ TypeInformation<WebPageAccessEvent> arrInfo1 = TypeInformation.of(new TypeHint<W
 TypeInformation<WebPageAccessEvent> arrInfo2 = new TypeHint<WebPageAccessEvent>() {}.getTypeInfo();
 ```
 
-### 7.3.3 Types
+### 7.3.3 `Types`
 
-在Flink中经常使用的类型已经预定义在`Types`中。
+在`Flink`中经常使用的类型已经预定义在`Types`中。
 
 **`Types`类的定义：**
 
@@ -5061,9 +5061,9 @@ public class Types {
     // ====================================================================================================
 
     /**
-     * Returns type information for typed subclasses of Flink's {@link
-     * org.apache.flink.api.java.tuple.Tuple}. Typed subclassed are classes that extend {@link
-     * org.apache.flink.api.java.tuple.Tuple0} till {@link org.apache.flink.api.java.tuple.Tuple25}
+     * Returns type information for typed subclasses of `Flink`'s {@link
+     * org.apache.`Flink`.api.java.tuple.Tuple}. Typed subclassed are classes that extend {@link
+     * org.apache.`Flink`.api.java.tuple.Tuple0} till {@link org.apache.`Flink`.api.java.tuple.Tuple25}
      * to provide types for all fields and might add additional getters and setters for better
      * readability. Additional member fields must not be added. A tuple must not be null.
      *
@@ -5073,9 +5073,9 @@ public class Types {
      *
      * <p>The generic types for all fields of the tuple can be defined in a hierarchy of subclasses.
      *
-     * <p>If Flink's type analyzer is unable to extract a tuple type information with type
+     * <p>If `Flink`'s type analyzer is unable to extract a tuple type information with type
      * information for all fields, an {@link
-     * org.apache.flink.api.common.functions.InvalidTypesException} is thrown.
+     * org.apache.`Flink`.api.common.functions.InvalidTypesException} is thrown.
      *
      * <p>Example use:
      *
@@ -5091,8 +5091,8 @@ public class Types {
      * Types.TUPLE(MyTuple.class)
      * </pre>
      *
-     * @param tupleSubclass A subclass of {@link org.apache.flink.api.java.tuple.Tuple0} till {@link
-     *     org.apache.flink.api.java.tuple.Tuple25} that defines all field types and does not add
+     * @param tupleSubclass A subclass of {@link org.apache.`Flink`.api.java.tuple.Tuple0} till {@link
+     *     org.apache.`Flink`.api.java.tuple.Tuple25} that defines all field types and does not add
      *     any additional fields
      */
     public static <T extends Tuple> TypeInformation<T> TUPLE(Class<T> tupleSubclass) {
@@ -5116,12 +5116,12 @@ public class Types {
      *
      * <p>The generic types for all fields of the POJO can be defined in a hierarchy of subclasses.
      *
-     * <p>If Flink's type analyzer is unable to extract a valid POJO type information with type
+     * <p>If `Flink`'s type analyzer is unable to extract a valid POJO type information with type
      * information for all fields, an {@link
-     * org.apache.flink.api.common.functions.InvalidTypesException} is thrown. Alternatively, you
+     * org.apache.`Flink`.api.common.functions.InvalidTypesException} is thrown. Alternatively, you
      * can use {@link Types#POJO(Class, Map)} to specify all fields manually.
      *
-     * @param pojoClass POJO class to be analyzed by Flink
+     * @param pojoClass POJO class to be analyzed by `Flink`
      */
     public static <T> TypeInformation<T> POJO(Class<T> pojoClass) {
         final TypeInformation<T> ti = TypeExtractor.createTypeInfo(pojoClass);
@@ -5145,8 +5145,8 @@ public class Types {
      *
      * <p>The generic types for all fields of the POJO can be defined in a hierarchy of subclasses.
      *
-     * <p>If Flink's type analyzer is unable to extract a POJO field, an {@link
-     * org.apache.flink.api.common.functions.InvalidTypesException} is thrown.
+     * <p>If `Flink`'s type analyzer is unable to extract a POJO field, an {@link
+     * org.apache.`Flink`.api.common.functions.InvalidTypesException} is thrown.
      *
      * <p><strong>Note:</strong> In most cases the type information of fields can be determined
      * automatically, we recommend to use {@link Types#POJO(Class)}.
@@ -5216,21 +5216,21 @@ public class Types {
     }
 
     /**
-     * Returns type information for Flink value types (classes that implement {@link
-     * org.apache.flink.types.Value}). Built-in value types do not support null values (except for
-     * {@link org.apache.flink.types.StringValue}).
+     * Returns type information for `Flink` value types (classes that implement {@link
+     * org.apache.`Flink`.types.Value}). Built-in value types do not support null values (except for
+     * {@link org.apache.`Flink`.types.StringValue}).
      *
      * <p>Value types describe their serialization and deserialization manually. Instead of going
      * through a general purpose serialization framework. A value type is reasonable when general
      * purpose serialization would be highly inefficient. The wrapped value can be altered, allowing
      * programmers to reuse objects and take pressure off the garbage collector.
      *
-     * <p>Flink provides built-in value types for all Java primitive types (such as {@link
-     * org.apache.flink.types.BooleanValue}, {@link org.apache.flink.types.IntValue}) as well as
-     * {@link org.apache.flink.types.StringValue}, {@link org.apache.flink.types.NullValue}, {@link
-     * org.apache.flink.types.ListValue}, and {@link org.apache.flink.types.MapValue}.
+     * <p>`Flink` provides built-in value types for all Java primitive types (such as {@link
+     * org.apache.`Flink`.types.BooleanValue}, {@link org.apache.`Flink`.types.IntValue}) as well as
+     * {@link org.apache.`Flink`.types.StringValue}, {@link org.apache.`Flink`.types.NullValue}, {@link
+     * org.apache.`Flink`.types.ListValue}, and {@link org.apache.`Flink`.types.MapValue}.
      *
-     * @param valueType class that implements {@link org.apache.flink.types.Value}
+     * @param valueType class that implements {@link org.apache.`Flink`.types.Value}
      */
     public static <V extends Value> TypeInformation<V> VALUE(Class<V> valueType) {
         return new ValueTypeInfo<>(valueType);
@@ -5240,10 +5240,10 @@ public class Types {
      * Returns type information for a Java {@link java.util.Map}. A map must not be null. Null
      * values in keys are not supported. An entry's value can be null.
      *
-     * <p>By default, maps are untyped and treated as a generic type in Flink; therefore, it is
+     * <p>By default, maps are untyped and treated as a generic type in `Flink`; therefore, it is
      * useful to pass type information whenever a map is used.
      *
-     * <p><strong>Note:</strong> Flink does not preserve the concrete {@link Map} type. It converts
+     * <p><strong>Note:</strong> `Flink` does not preserve the concrete {@link Map} type. It converts
      * a map into {@link HashMap} when copying or deserializing.
      *
      * @param keyType type information for the map's keys
@@ -5258,10 +5258,10 @@ public class Types {
      * Returns type information for a Java {@link java.util.List}. A list must not be null. Null
      * values in elements are not supported.
      *
-     * <p>By default, lists are untyped and treated as a generic type in Flink; therefore, it is
+     * <p>By default, lists are untyped and treated as a generic type in `Flink`; therefore, it is
      * useful to pass type information whenever a list is used.
      *
-     * <p><strong>Note:</strong> Flink does not preserve the concrete {@link List} type. It converts
+     * <p><strong>Note:</strong> `Flink` does not preserve the concrete {@link List} type. It converts
      * a list into {@link ArrayList} when copying or deserializing.
      *
      * @param elementType type information for the list's elements
@@ -5280,15 +5280,15 @@ public class Types {
     }
 
     /**
-     * Returns type information for Flink's {@link org.apache.flink.types.Either} type. Null values
+     * Returns type information for `Flink`'s {@link org.apache.`Flink`.types.Either} type. Null values
      * are not supported.
      *
      * <p>Either type can be used for a value of two possible types.
      *
      * <p>Example use: <code>Types.EITHER(Types.VOID, Types.INT)</code>
      *
-     * @param leftType type information of left side / {@link org.apache.flink.types.Either.Left}
-     * @param rightType type information of right side / {@link org.apache.flink.types.Either.Right}
+     * @param leftType type information of left side / {@link org.apache.`Flink`.types.Either.Left}
+     * @param rightType type information of right side / {@link org.apache.`Flink`.types.Either.Right}
      */
     public static <L, R> TypeInformation<Either<L, R>> EITHER(
             TypeInformation<L> leftType, TypeInformation<R> rightType) {
@@ -5308,11 +5308,11 @@ TypeHint<Tuple2<String, Integer>> typeHint1 = new TypeHint<Tuple2<String, Intege
 TypeInformation<Tuple> typeHint2 = Types.TUPLE(Types.STRING, Types.INT);
 ```
 
-## 7.4、Operator State
+## 7.4、`Operator State`
 
 另一大类受控状态就是算子状态。算子状态只正对当前算子并行任务有效，不需要考虑不同`key`的隔离。算子状态功能没有键控状丰富，应用场景也较少，方法调用也与键控状态有些区别。
 
-### 7.4.1 ListState
+### 7.4.1 `ListState`
 
 算子状态中的`ListState`与键控状态中的`ListState`一样，都是将状态保存为列表，并且列表中的每一个元素都是完全独立的。
 
@@ -5320,15 +5320,15 @@ TypeInformation<Tuple> typeHint2 = Types.TUPLE(Types.STRING, Types.INT);
 
 当算子并行度发生调整时，`ListState`中的所有元素都会被收集起来，形成一个”大列表“，然后再轮询发送给各个并行子任务。
 
-### 7.4.2 UnionListState
+### 7.4.2 `UnionListState`
 
 `UnionListState`与`ListState`相似，不同点在于算子并行度发生变化时，`UnionListState`会将上游每个并行子任务的状态广播到下游算子的并行子任务中，下游算子的每一个并行子任务都将拿到上游所有并行子任务的状态，这样，可以根据需要自行选择要使用的状态。
 
-### 7.4.3 BroadcastState
+### 7.4.3 `BroadcastState`
 
 # 八、多流转换
 
-无论是基本的简单转换和聚合，还是基于窗口的计算，都是对一条流进行数据的转换和计算，在实际的应用中，有时需要将多条数流进行合并处理，有时需要将一条流拆分出来，所以经常需要对数据流进行拆分或者合并的操作，为此，Flink为合流和分流分别提供了不同的预定义。
+无论是基本的简单转换和聚合，还是基于窗口的计算，都是对一条流进行数据的转换和计算，在实际的应用中，有时需要将多条数流进行合并处理，有时需要将一条流拆分出来，所以经常需要对数据流进行拆分或者合并的操作，为此，`Flink`为合流和分流分别提供了不同的预定义。
 
 ## 8.1、分流
 
@@ -5342,7 +5342,7 @@ TypeInformation<Tuple> typeHint2 = Types.TUPLE(Types.STRING, Types.INT);
 
 ### 8.2.1 数据的连接
 
-#### 8.2.1 union
+#### 8.2.1 `union`
 
 最简单的合流就是直接将多条数据流合并成一条数据流，基于`DataStream`调用`union()`方法，传入其他`DataStream`作为参数，返回结果依然是一个`DataStream`。
 
@@ -5374,9 +5374,9 @@ public final DataStream<T> union(DataStream<T>... streams) {
 
 水位线的本质是，当水位线到达某一时刻，那么该时刻之前并且包含该时刻的所有数据都已到达，所以对于合流之后的水位线，也以多条数据流中数据最小的时间戳为准，类似于算子并行度发生变化时，水位线的传递规则一样。
 
-#### 8.2.2 connect
+#### 8.2.2 `connect`
 
-使用`union()`进行数据流的合并，方法和流处理逻辑简单，但存在数据类型的限制，只能对同样数据类型的数据流进行合并，为了能对不同数据类型的数据流进行合并，Flink提供了更为底层、更为通用的数据流合并操作：`connect`。
+使用`union()`进行数据流的合并，方法和流处理逻辑简单，但存在数据类型的限制，只能对同样数据类型的数据流进行合并，为了能对不同数据类型的数据流进行合并，`Flink`提供了更为底层、更为通用的数据流合并操作：`connect`。
 
 `connect`合流操作能够对不同数据类型的数据流进行合并，但是一次只能合并两条数据流，并且在合流过程中，需要对参与合并的两条数据流分别定义各自的处理逻辑，使得两条数据流的输出数据类型相同，即达到合流的目的。换句话说，合流不仅是需要将两条流的数据合并到一起，还需要将两条流的数据类型也进行整合，使得合并后的数据流类型统一。
 
@@ -5457,11 +5457,11 @@ public abstract class KeyedCoProcessFunction<K, IN1, IN2, OUT> extends AbstractR
 
 **==需要注意的是，如果基于`ConnectedStreams`调用`process()`方法并传入处理函数 `CoProcessFunction`之前，并没有调用`keyBy()`方法对数据进行分组，那么在`CoProcessFuntion`中仍然不能使用定时服务，这里再一次体现了只有键控流才能够使用定时服务。==**
 
-#### 8.2.3 broadcast
+#### 8.2.3 `broadcast`
 
 在前面介绍数据向下游算子传递的方式时，有一种方式为广播，基于`DataStream`调用`broadcast()`，即可将上游数据发送到下游算子所有并行子任务中。在调用`broadcast()`方法时，除了基本调用（不传递参数）将数据进行广播，还可以传递参数`MapStateDescriptr`，将数据广播的同时转换成广播流`BroadcastStream`。
 
-将`DataStream`与`BroadcastStream`进行连接，可以得到广播连接流`BroadcastConnectedStream`。广播连接流一般用在需要动态定义某些规则或配置的场景，当规则时实时变动的，可以使用单独的一个流来获取动态规则流，并将其广播，但不同于简单的数据向下游发送，为了使下游中其他数据流使用这些规则数据，在广播数据的同时还应当将其存储起来以供使用，因此，Flink在其预定义的实现中，将这些数据广播并以`MapState`的形式存储这些数据，并称之为广播流。而下游算子中的数据要想使用这些数据，那么需要与这些广播流进行连接，得到的就是广播连接流。
+将`DataStream`与`BroadcastStream`进行连接，可以得到广播连接流`BroadcastConnectedStream`。广播连接流一般用在需要动态定义某些规则或配置的场景，当规则时实时变动的，可以使用单独的一个流来获取动态规则流，并将其广播，但不同于简单的数据向下游发送，为了使下游中其他数据流使用这些规则数据，在广播数据的同时还应当将其存储起来以供使用，因此，`Flink`在其预定义的实现中，将这些数据广播并以`MapState`的形式存储这些数据，并称之为广播流。而下游算子中的数据要想使用这些数据，那么需要与这些广播流进行连接，得到的就是广播连接流。
 
 **广播连接流基本使用方式**
 
@@ -5551,7 +5551,7 @@ public abstract class KeyedBroadcastProcessFunction<KS, IN1, IN2, OUT>
 
 不同于数据的连接，是将多条流的数据合并成一条流，总数据元素数量等于各子数据流数据元素之和，数据的联结是将符合条件的数据进行“配对”，将配对成功的数据进行输出。
 
-数据的联结，其底层实现依然是使用数据的连接操作进行实现，由于这种数据使用场景较为常见，因此，Flink在其内部进行了预定义实现，这也使得数据联结的使用步骤也是较为固定的。
+数据的联结，其底层实现依然是使用数据的连接操作进行实现，由于这种数据使用场景较为常见，因此，`Flink`在其内部进行了预定义实现，这也使得数据联结的使用步骤也是较为固定的。
 
 #### 8.2.2.1 窗口联结
 
@@ -5593,13 +5593,13 @@ public abstract class RichJoinFunction<IN1, IN2, OUT> extends AbstractRichFuncti
 
 **窗口联结的数据处理过程：**
 
-**两条数据流到来之后，首先会按照`key`进行分组，进入对应的窗口中存储，当达到窗口结束时间时，Flink会先统计出窗口内两条流所有数据的所有组合，即对窗口中两条流所有数据进行一次笛卡尔积，然后对笛卡尔积结果进行遍历，将所有配对成功的数据作为参数传入`JionFunction`的`join()`方法，进行处理并得到结果。==所以，窗口中每有一对数据成功配对的数据，`JoinFunction`的`join()`方法就会调用一次，并输出一个结果。==**
+**两条数据流到来之后，首先会按照`key`进行分组，进入对应的窗口中存储，当达到窗口结束时间时，`Flink`会先统计出窗口内两条流所有数据的所有组合，即对窗口中两条流所有数据进行一次笛卡尔积，然后对笛卡尔积结果进行遍历，将所有配对成功的数据作为参数传入`JionFunction`的`join()`方法，进行处理并得到结果。==所以，窗口中每有一对数据成功配对的数据，`JoinFunction`的`join()`方法就会调用一次，并输出一个结果。==**
 
 #### 8.2.2.2 间隔联结
 
 间隔联结，针对一条流的每个数据，开辟出其时间戳前后的一段时间间隔，在这段时间内，与另一条数据流中的数据进行配配对，如果在这段时间内，没有数据到来，那么将不会有成功配对的数据。
 
-**由于间隔联结也是Flink预定义实现的，因此，其调用步骤也是基本固定**
+**由于间隔联结也是`Flink`预定义实现的，因此，其调用步骤也是基本固定**
 
 ```java
 stream1.keyBy(<KeySelector>)
@@ -5642,7 +5642,7 @@ public abstract class ProcessJoinFunction<IN1, IN2, OUT> extends AbstractRichFun
 
 #### 8.2.2.3 窗口同组联结
 
-除了窗口联结和间隔联结外，Flink还预定义了窗口同组联结操作，其用法与窗口联结非常类型，也是将两条流合并之后，开窗处理匹配的元素，`API`调用时只需要将`join()`方法替换成`coGroup()`就可以了。
+除了窗口联结和间隔联结外，`Flink`还预定义了窗口同组联结操作，其用法与窗口联结非常类型，也是将两条流合并之后，开窗处理匹配的元素，`API`调用时只需要将`join()`方法替换成`coGroup()`就可以了。
 
 **窗口同组联结调用步骤：**
 
@@ -5671,17 +5671,17 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
 
 ## 9.1、检查点
 
-区别于离线大数据组件，Flink程序都具有运行时`State`，默认情况下，为了快速访问状态，Flink将任务的状态保存在内存中，因此，当Flink程序失败时，内存中的状态都将丢失，这就意味着之前的计算全部白费，在任务重启之后，需要重新计算。因此，为了使Flink程序能够“断点续传”，在任务失败时不做重复计算，那么就需要将某个时间点的所有状态都保存下来，所保存的内容以及操作就是检查点。
+区别于离线大数据组件，`Flink`程序都具有运行时`State`，默认情况下，为了快速访问状态，`Flink`将任务的状态保存在内存中，因此，当`Flink`程序失败时，内存中的状态都将丢失，这就意味着之前的计算全部白费，在任务重启之后，需要重新计算。因此，为了使`Flink`程序能够“断点续传”，在任务失败时不做重复计算，那么就需要将某个时间点的所有状态都保存下来，所保存的内容以及操作就是检查点。
 
-检查点是Flink容错机制的核心，当遇到故障需要重启的时候，可以从检查点中读取之前任务的状态，这样就可以回到当时保存检查点的那一刻，进而继续进行数据处理。
+检查点是`Flink`容错机制的核心，当遇到故障需要重启的时候，可以从检查点中读取之前任务的状态，这样就可以回到当时保存检查点的那一刻，进而继续进行数据处理。
 
-**基于Flink实时数据处理的特性，在进行检查点保存时存在三个问题需要解决：**
+**基于`Flink`实时数据处理的特性，在进行检查点保存时存在三个问题需要解决：**
 
 -   **什么时候进行检查点保存**
--   **Flink中正在处理的数据怎么处理**
--   **Flink中众多并行子任务会做什么样的反应**
+-   **`Flink`中正在处理的数据怎么处理**
+-   **`Flink`中众多并行子任务会做什么样的反应**
 
-为了解决这些问题，Flink采用了基于`Chandy-Lamport`算法的分布式快照。当`JobManager`发出保存检查点的命令后，`Source`任务将向数据流中发送一个检查点分界线`Checkpoint Barrier`。
+为了解决这些问题，`Flink`采用了基于`Chandy-Lamport`算法的分布式快照。当`JobManager`发出保存检查点的命令后，`Source`任务将向数据流中发送一个检查点分界线`Checkpoint Barrier`。
 
 与水位线类型，检查点分界线也是一种特殊的数据，由`Source`算子发送到常规的数据流中，从时间的角度观察，其位置是固定的，不能超越前面的数据，也不能被后面的数据超越，检查点分界线中带有检查点`ID`，是当前检查点的唯一标识。
 
@@ -5691,17 +5691,17 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
 
 检查点分界线的实际意义是：分界线之前到来的数据都将使状态发生改变，而检查点保存的是更新后的状态。
 
-为此，Flink采用了异步分界线快照算法，该算法的核心有两个原则：当上游任务向下游算子的多个并行子任务发送检查点分界线是，需要将其广播出去；当上游算子的多个并行子任务向下游算子的同一个并行子任务发送检查点分界线时，需要在下游任务执行分界线对其操作，即需要等待所有并行分区的所有的检查点分界点都到齐才会开始状态的保存。
+为此，`Flink`采用了异步分界线快照算法，该算法的核心有两个原则：当上游任务向下游算子的多个并行子任务发送检查点分界线是，需要将其广播出去；当上游算子的多个并行子任务向下游算子的同一个并行子任务发送检查点分界线时，需要在下游任务执行分界线对其操作，即需要等待所有并行分区的所有的检查点分界点都到齐才会开始状态的保存。
 
 由于下游算子的并行子任务需要等待上游算子所有并行子任务的检查点分界线，因此对下游算子并行子任务的数据处理速度有一定的影响。如果上游算子的某个并行子任务数据量过大，导致检查点分界线迟迟未能发送出去，将导致下游算子会堆积大量的缓冲数据，导致检查点需要很久才能保存完成，因此也会出现背压。
 
-为此，Flink 1.11版本之后，提供了不对齐的检查点保存方式，可以将未处理的缓冲数据也保存进检查点。
+为此，`Flink 1.11`版本之后，提供了不对齐的检查点保存方式，可以将未处理的缓冲数据也保存进检查点。
 
-**==需要注意的是，要想正确地从检查点中读取并恢复状态，必须知道每个算子任务状态的类型和拓扑结构，因此，为了能正确地从之前的检查点恢复状态，在改动程序、修复bug时要保证算子的类型和拓扑顺序不变。==**
+**==需要注意的是，要想正确地从检查点中读取并恢复状态，必须知道每个算子任务状态的类型和拓扑结构，因此，为了能正确地从之前的检查点恢复状态，在改动程序、修复`bug`时要保证算子的类型和拓扑顺序不变。==**
 
 ## 9.2、检查点的配置项
 
-默认情况下，Flink程序是禁用检查点的，如果需要Flink程序开启检查点功能，需要在执行环境中进行配置。
+默认情况下，`Flink`程序是禁用检查点的，如果需要`Flink`程序开启检查点功能，需要在执行环境中进行配置。
 
 检查点的间隔时间是对处理性能和故障恢复速度的一个权衡，如果希望对性能的影响更小，可以调大时间间隔；如果希望故障恢复后迅速赶上实时的数据处理，那么就需要将间隔时间设置小一些。
 
@@ -5713,7 +5713,7 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
 >   CheckpointConfig checkpointConfig = env.getCheckpointConfig();
 >   ```
 
--   **设置检查点保存路径：Flink提供了两种检查点保存类型，一种是堆内存，另一种是文档文件系统。默认情况下，Flink将检查点保存在`JobManager`的堆内存中。而在生产环境中，检查点一般保存在文件系统中。配置检查点存储路径，使用流执行环境对象调用`setCheckpointStorage()`方法，传入一个`CheckpointStorage`类型的参数，`CheckpointStorage`是一个枚举类**
+-   **设置检查点保存路径：`Flink`提供了两种检查点保存类型，一种是堆内存，另一种是文档文件系统。默认情况下，Flink将检查点保存在`JobManager`的堆内存中。而在生产环境中，检查点一般保存在文件系统中。配置检查点存储路径，使用流执行环境对象调用`setCheckpointStorage()`方法，传入一个`CheckpointStorage`类型的参数，`CheckpointStorage`是一个枚举类**
 
     -   **将检查点保存到`JobManager`堆内存中：**
 
@@ -5724,7 +5724,7 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
     -   **将加差点保存到外部文件系统中：**
 
         ```Java
-        checkpointConfig.setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://hadoop132:9820/flink/checkpoint"));
+        checkpointConfig.setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://hadoop132:9820/`Flink`/checkpoint"));
         ```
 
 -   **设置检查点模式：检查点一致性的保证级别，有精确一次`exactly-once`和至少一次`at-least-once`。默认级别为`exactly-once`，而对于大多数低延迟的流处理程序，`at-least-once`就足够使用了，而且数据处理效率会更高**
@@ -5754,7 +5754,7 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
     envCheckpointConfig.setMinPauseBetweenCheckpoints(10 * 1000L);
     ```
 
--   **开启外部持久化存储：默认情况下，在`Job`失败的时候，Flink不会自动清理已保存的检查点 。该配置项用于配置`Job`失败时，是否需要将外部持久化的检查点进行清理。配置时，使用检查点配置对象`CheckpointConfig`调用`enableExternalizedCheckpoints()`，传入一个`ExternalizedCheckpointCleanup`类型的参数**
+-   **开启外部持久化存储：默认情况下，在`Job`失败的时候，`Flink`不会自动清理已保存的检查点 。该配置项用于配置`Job`失败时，是否需要将外部持久化的检查点进行清理。配置时，使用检查点配置对象`CheckpointConfig`调用`enableExternalizedCheckpoints()`，传入一个`ExternalizedCheckpointCleanup`类型的参数**
 
     **`ExternalizedCheckpointCleanup`是一个枚举类：**
 
@@ -5802,7 +5802,7 @@ public class C028_CheckPointConfig {
         // TODO 获取流执行环境
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // 1、开启Flink检查点功能，设置每隔1分钟进行一次检查点。参数单位为毫秒
+        // 1、开启`Flink`检查点功能，设置每隔1分钟进行一次检查点。参数单位为毫秒
         env.enableCheckpointing(60 * 1000L);
 
         // TODO 获取检查点配置对象
@@ -5812,7 +5812,7 @@ public class C028_CheckPointConfig {
         // 保存到JobManager堆内存中
         envCheckpointConfig.setCheckpointStorage(new JobManagerCheckpointStorage());
         // 保存到外部文件系统中
-        envCheckpointConfig.setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://hadoop132:9820/flink/checkpoint"));
+        envCheckpointConfig.setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://hadoop132:9820/`Flink`/checkpoint"));
 
         // 3、设置检查点模式：精确一次和至少一次
         // 至少一次
@@ -5849,9 +5849,9 @@ public class C028_CheckPointConfig {
 
 ## 9.3、保存点
 
-除了检查点外，Flink还提供了另一个非常独特的镜像保存功能：保存点`Savepoint`。保存点也是一个存盘的备份，其原理和算法与检查点完全相同，只是多了一些额外的元数据。事实上，保存点就是通过检查点的机制来创建流式作业状态的一致性镜像的。
+除了检查点外，`Flink`还提供了另一个非常独特的镜像保存功能：保存点`Savepoint`。保存点也是一个存盘的备份，其原理和算法与检查点完全相同，只是多了一些额外的元数据。事实上，保存点就是通过检查点的机制来创建流式作业状态的一致性镜像的。
 
-保存点的快照是以算子`ID`和状态的名称组织起来的，相当于一个`key-value`，从保存点启动应用程序时，Flink会将保存点的状态重新分配给相应的算子任务。
+保存点的快照是以算子`ID`和状态的名称组织起来的，相当于一个`key-value`，从保存点启动应用程序时，`Flink`会将保存点的状态重新分配给相应的算子任务。
 
 **保存点的用途：**
 
@@ -5862,12 +5862,12 @@ public class C028_CheckPointConfig {
 **具体使用场景有：**
 
 -   **版本管理和归档存储：**对重要的节点进行手动备份，设置某一版本，归档存储应用程序的状态
--   **更新Flink版本：**当前Flink版本的底层架构已经非常稳定了，所以当Flink版本升级时，程序本身一般时兼容的，这时不需要重新执行所有的计算，只需要在停止应用的时候创建一个保存点，然后升级Flink版本，再从保存点启动就可以继续进行数据处理了
--   **更新应用程序：**除了更新Flink版本，也可以更新应用程序。但在更新应用程序的时候，需要保证算子或状态的拓扑结构和数据类型都是不变的，这样才能正常从保存的保存点去加载
+-   **更新Flink版本：**当前`Flink`版本的底层架构已经非常稳定了，所以当`Flink`版本升级时，程序本身一般时兼容的，这时不需要重新执行所有的计算，只需要在停止应用的时候创建一个保存点，然后升级`Flink`版本，再从保存点启动就可以继续进行数据处理了
+-   **更新应用程序：**除了更新`Flink`版本，也可以更新应用程序。但在更新应用程序的时候，需要保证算子或状态的拓扑结构和数据类型都是不变的，这样才能正常从保存的保存点去加载
 -   **调整并行度：**如果应用运行过程中，需要的资源不足或者资源大量剩余，也可以通过保存点重启的方式，将应用程序的配置资源进行调整
 -   **暂停应用程序：**有时候不需要调整集群或者更新程序，只是单纯地需要将应用停止，释放一些资源来处理优先级更高地应用，这时就可以使用保存点进行应用的暂停和重启
 
-**==需要注意的时，保存点能够在程序更改的时候依然兼容，前提时状态的拓扑结构和数据类型不变，而保存点中状态都是以算子`ID`和状态名称这样的`key-value`进行组织的，对于没有设置`ID`的算子，Flink默认会自动进行设置，所以在重启应用后，可能会导致`ID`不同而无法兼容以前的状态，所以，为了便于后期的维护，开发者应该在程序中为每一个算子手动指定算子`ID`。==**
+**==需要注意的时，保存点能够在程序更改的时候依然兼容，前提时状态的拓扑结构和数据类型不变，而保存点中状态都是以算子`ID`和状态名称这样的`key-value`进行组织的，对于没有设置`ID`的算子，`Flink`默认会自动进行设置，所以在重启应用后，可能会导致`ID`不同而无法兼容以前的状态，所以，为了便于后期的维护，开发者应该在程序中为每一个算子手动指定算子`ID`。==**
 
 **==Flink中为算子指定`ID`，通过算子调用`uid()`方法，传入字符串参数作为算子的`ID`。==**
 
@@ -5876,26 +5876,26 @@ public class C028_CheckPointConfig {
 保存点的使用非常简单，通过命令行工具来创建保存点，以及从保存点恢复作业。
 
 -   **创建保存点：**
-    -   **在命令行中执行命令：`flink savepoint <jobID> [targetDirectory]`。其中`jobID`是需要做保存点的作业`ID`，`targetDirectory`是保存点的保存路径，是可选项**
-    -   **对于保存点的默认路径，可以通过配置文件`flink-conf.yaml`中的`state.savepoint.dir`配置项来进行配置**
+    -   **在命令行中执行命令：`Flink savepoint <jobID> [targetDirectory]`。其中`jobID`是需要做保存点的作业`ID`，`targetDirectory`是保存点的保存路径，是可选项**
+    -   **对于保存点的默认路径，可以通过配置文件`Flink-conf.yaml`中的`state.savepoint.dir`配置项来进行配置**
     -   **对于单独的作业，也可以在代码中通过执行环境调用`setDefaultSavepointDir()`方法来进行配置**
     -   **由于保存点一般都是希望更改环境之后重启，所以创建保存点之后往往都是立刻停止作业，所以，除了对运行的作业创建保存，也可以在停止一个作业时直接创建保存点**
-        -   **在命令行中执行命令：`flink stop --savepointPath [targetDirectory] <jobID> `，将会在任务停止时创建保存点**
--   **从保存点中重启应用，在命令行中执行命令：`flink run -s [savepointPath]`。在启动Flink应用时，添加参数`-s`用于指定保存点路径即可从保存点中启动任务，其他的启动参数完全不变。在`web UI`中进行作业提交时，可以填入的参数，除了入口类、并行度和运行参数，还有一个`Savepoint Path`，这就是从保存点启动应用的配置**
+        -   **在命令行中执行命令：`Flink stop --savepointPath [targetDirectory] <jobID> `，将会在任务停止时创建保存点**
+-   **从保存点中重启应用，在命令行中执行命令：`Flink run -s [savepointPath]`。在启动Flink应用时，添加参数`-s`用于指定保存点路径即可从保存点中启动任务，其他的启动参数完全不变。在`web UI`中进行作业提交时，可以填入的参数，除了入口类、并行度和运行参数，还有一个`Savepoint Path`，这就是从保存点启动应用的配置**
 
 ## 9.4、端到端的一致性
 
-Flink中一致性的概念主要用在故障恢复的描述中，简单来说，一致性就是结果的正确性。对于分布式系统而言，强调的是不同节点中相同数据的副本应该总是一致的，也就是从不同的节点读取时总能得到相同的值；对于事物而言，要求提交更新操作后，能够读取到新的数据。
+`Flink`中一致性的概念主要用在故障恢复的描述中，简单来说，一致性就是结果的正确性。对于分布式系统而言，强调的是不同节点中相同数据的副本应该总是一致的，也就是从不同的节点读取时总能得到相同的值；对于事物而言，要求提交更新操作后，能够读取到新的数据。
 
-对于Flink来说，多个节点并行处理不同的任务，需要保证计算结果的正确性，就必须不漏掉一个数据，也不会重复计算任何一个数据。流式计算本身就是事件触发，来一条数据计算一条数据，所以正常处理的过程中结果肯定时正确的，但是在发生故障，需要恢复状态进行回滚时，就需要更多的保证机制。
+对于`Flink`来说，多个节点并行处理不同的任务，需要保证计算结果的正确性，就必须不漏掉一个数据，也不会重复计算任何一个数据。流式计算本身就是事件触发，来一条数据计算一条数据，所以正常处理的过程中结果肯定时正确的，但是在发生故障，需要恢复状态进行回滚时，就需要更多的保证机制。
 
-Flink通过检查点的保存来保证故障恢复后结果的正确，所以需要讨论故障恢复后的状态一致性。
+`Flink`通过检查点的保存来保证故障恢复后结果的正确，所以需要讨论故障恢复后的状态一致性。
 
 状态的一致性分为三种：最多一次、至少一次、精确一次。
 
 对于开启了检查点的Flink系统而言，其内部的状态一致性能够做到**最多一次、至少一次、精确一次**。
 
-然而，实际生产中，Flink需要从外部读取数据，将其处理之后再写出到外部系统，因此，只有Flink本身保证数据的精确一次性还远远不够。要想保证依赖于Flink框架的实时流数据处理系统的整体精确一次性，那么对外部系统还有一定的要求。
+然而，实际生产中，`Flink`需要从外部读取数据，将其处理之后再写出到外部系统，因此，只有`Flink`本身保证数据的精确一次性还远远不够。要想保证依赖于`Flink`框架的实时流数据处理系统的整体精确一次性，那么对外部系统还有一定的要求。
 
 **对于`Source`端，要求外部数据源必须具有数据重放的能力，这样能够保证在故障恢复之后，数据不丢失。**
 
@@ -5915,7 +5915,7 @@ Flink通过检查点的保存来保证故障恢复后结果的正确，所以需
 
 事务的特性保证了所有操作必须完全成功，否则在每个操作中所作的所有更改都会被撤销。
 
-在Flink流处理结果写入外部系统时，如果能够构建一个事务，让写入操作可以随着检查点来提交和回滚，那么自然就可以解决重复写入的问题。其基本思路就是，用一个事务来进行数据项外部系统的写入，这个事务是与检查点绑定在一起的。当`Sink`
+在`Flink`流处理结果写入外部系统时，如果能够构建一个事务，让写入操作可以随着检查点来提交和回滚，那么自然就可以解决重复写入的问题。其基本思路就是，用一个事务来进行数据项外部系统的写入，这个事务是与检查点绑定在一起的。当`Sink`
 
 任务遇到检查点分界线时，开始保存状态，同时，开启一个事务，将接下来所有数据都写入到这个事务中，等检查点保存完毕时，将事务提交，这样所有数据就成功写入了。如果中间过程出现故障，那么状态会回退到上一个检查点，而当前事务就会回滚，写入到外部的数据就会被撤销。
 
