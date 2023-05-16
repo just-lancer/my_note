@@ -1,9 +1,9 @@
 <h1 align = "center">Flink
 </h1>
 
-# 一、`Flink`简介
+# 一、Flink简介
 
-# 二、`Flink`部署和运行模式
+# 二、Flink部署和运行模式
 
 在不同的部署模式下，`Flink`各组件的启动以及资源获取的方式都有所不同，为此`Flink`提供了三种不同的部署模式。而在不同的运行环境下，`Flink`的资源调度和服务启停也都有所不同，`Flink`根据不同的场景也提供了不同运行模式。
 
@@ -581,7 +581,7 @@
 -   **与`Per Job`模式相同，`Application`模式直接提交任务即可：`Flink run-application -t yarn-application -c <Flink Application 的全类名> <Flink Application 所在jar包>`**
 -   **当`Flink`任务执行完成时，会自动停止该`Flink`集群，也可以通过`Flink Web UI`手动停止，或者通过`YARN`命令停止`Flink`集群所对应的任务**
 
-## 2.3、`Flink`任务提交方式和流程
+## 2.3、Flink任务提交方式和流程
 
 `Flink`任务提交方式分为两种，一种是通过`Flink`集群的`Web UI`进行任务提交；另一种方式是通过命令行的方式。
 
@@ -645,13 +645,13 @@
     -   **停止任务：`Flink cancel -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
     -   **查看任务的运行状态：`Flink list -t yarn-application -Dyarn.application.id=<YARN Application ID>`**
 
-# 三、`Flink`运行时架构
+# 三、Flink运行时架构
 
 `Flink`是一个需要有效分配和管理计算资源，用以进行流数据处理的分布式系统。虽然集成了所有常见的资源调度组件，例如，`YARN`、`Kubernetes`、`Mesos`，但也可以部署为`Standalone`，甚至`Local`模式运行。
 
 下面将对`Flink`的体系架构，各个主要组件如何协调工作，以执行流数据处理，以及如何从故障中恢复。
 
-## 3.1、`Flink`体系架构
+## 3.1、Flink体系架构
 
 `Flink`运行时架构主要包含两个主要的组件：`JobManager`和`TaskManager`。
 
@@ -695,7 +695,7 @@
 
 `TaskManager`又被称为`workers`，用于进行数据流的具体计算任务，同时能够缓冲数据流，以及与其他`TaskManager`进行数据交换。
 
-## 3.2、`Job`提交流程
+## 3.2、Job提交流程
 
 `Job`总体提交流程
 
@@ -805,7 +805,7 @@
 -   `Flink`集群所需的`Task Slot`和作业中使用的最大并行度恰好一样。无需计算程序总共包含多少个`Task`（具有不同并行度）
 -   容易获得更好的资源利用。如果没有`Slot` 共享，非密集`subTask（Source / map()）`将占用与密集型`subTask（Window）`一样多的资源。通过`Slot`共享，可以充分利用分配的资源，同时确保繁重的`subTask`在`TaskManager`之间公平分配
 
-# 四、`DataStream API`
+# 四、DataStream API
 
 `Flink `有非常灵活的分层`API`设计，其中的核心层就是`DataStream / DataSet API`。由于新版本已经实现了流批一体，`DataSet API`将被弃用，官方推荐统一使用 `DataStream API `处理流数据和批数据。**==下面主要并且默认介绍基本的`DataStream API`用法。==**
 
@@ -825,7 +825,7 @@
 
 ![image-20230302165350717](./03-Flink.assets/image-20230302165350717.png)
 
-## 4.0、引入`Flink`项目的依赖
+## 4.0、引入Flink项目的依赖
 
 为了能在`IDEA`开发环境中编写并运行`Flink`代码，需要在`module`的`pom.xml`中引入`Flink`项目的相关依赖，包含，`Flink-java`、`Flink-streaming-java`，以及`Flink-clients`（`Flink`客户端，可以省略）。另外为了便于查看运行日志，还引入`slf4j`和`log4j`进行日志管理。
 
@@ -918,7 +918,7 @@ log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
 log4j.appender.stdout.layout.ConversionPattern=%-4r [%t] %-5p %c %x - %m%n
 ```
 
-## 4.1、创建执行环境（`Execution Environment`）
+## 4.1、创建执行环境（Execution Environment）
 
 `Flink Application`可以在不同的上下文环境中运行：本地`JVM`、远程集群。不同的环境，`Application`的提交运行过程会有所不同，所以，在提交作业执行计算时，必须先获取当前`Flink`的运行环境，从而建立与`Flink`服务之间的联系。只有获取运行环境的上下文信息，才能将具体的任务调度到不同的`TaskManager`执行。
 
@@ -998,7 +998,7 @@ log4j.appender.stdout.layout.ConversionPattern=%-4r [%t] %-5p %c %x - %m%n
 >
 >       配置执行模式的方式，同上。
 
-## 4.2、`Source Operator`
+## 4.2、Source Operator
 
 `Flink`程序中，`Source`用于对接数据源，将数据读取到`Flink`集群中，进行才能够进行数据处理。
 
@@ -1436,7 +1436,7 @@ public class ParallelWebPageAccessEventSource extends RichParallelSourceFunction
 >    .returns(new TypeHint<Tuple2<Integer, SomeType>>(){})
 >    ```
 
-## 4.3、`Transformation Operator `
+## 4.3、Transformation Operator 
 
 从数据源读取到数据之后，就可以调用各种`Transformation Operator`，将`DataStream`转换成新的`DataStream`，进行实现业务的处理逻辑。
 
@@ -1883,7 +1883,7 @@ public class C010_ReduceTransformation {
 }
 ```
 
-## 4.4、富函数（`Rich Function`）
+## 4.4、富函数（Rich Function）
 
 通过上述的演示示例，可以很清楚地看到Flink的程序结构：创建执行环境、获取数据源、数据处理操作、输出数据，最后执行流数据处理操作。
 
@@ -2021,7 +2021,7 @@ public class C011_RichMapFunction {
 }
 ```
 
-## 4.5、`Flink`的数据分区
+## 4.5、Flink的数据分区
 
 `Flink`的数据分区策略与`Spark`的分区策略相似，当上下游子任务的并行度不同时，那么必然会出现数据应该去往哪个分区的问题。`Flink`中针对数据分区的问题提供了5中策略，相应地内嵌了5种方法。
 
@@ -2134,7 +2134,7 @@ public class Demo2 {
 }
 ```
 
-## 4.6、`Sink Operator`
+## 4.6、Sink Operator
 
 `Flink`与外部数据的交互，无论是读取数据，还是将数据写出到外部系统，都非常容易。但是问题在于，`Flink`是一个分布式实时流数据处理框架，对稳定性和容错性要求极高，当`Flink`与外部系统交互，出现故障时该如何处理？
 
@@ -3521,7 +3521,7 @@ DataStream ds = new_stream.getSideOutput(outputTag)
 
 ![AbstractRichFunction](./03-Flink.assets/AbstractRichFunction.png)
 
-## 6.2、`ProcessFunction`
+## 6.2、ProcessFunction
 
 **`ProcessFunction`的定义**
 
@@ -3660,7 +3660,7 @@ public class C021_ProcessFunction {
 
 **说明：第60行注册定时器的代码在运行时会报错：`Caused by: java.lang.UnsupportedOperationException: Setting timers is only supported on a keyed streams.`。表明`ProcessFunction`无法使用定时服务，实际上，在`Flink`中，所有非键控流的处理函数都无法使用定时服务。**
 
-## 6.3、`KeyedProcessFunction`
+## 6.3、KeyedProcessFunction
 
 **`KeyedProcessFunction`定义**
 
@@ -3801,7 +3801,7 @@ public class C022_KeyedProcessFunction {
 
 ```
 
-## 6.4、`ProcessAllWindowFunction`
+## 6.4、ProcessAllWindowFunction
 
 **`ProcessAllWindowFunction`的定义**
 
@@ -3841,7 +3841,7 @@ public abstract class ProcessAllWindowFunction<IN, OUT, W extends Window> extend
 
 **`ProcessAllWindowFunction`的`Context`内部类中并没有定义获取时间服务`TimerService`的方法，因此`ProcessAllWindowFunction`并不能使用时间服务，但这并不代表`ProcessAllWindowFunction`中没有时间服务。窗口本身就具备时间属性，其定时器在Flink内部已经定义好，即窗口结束时间。如果开发者需要自定义定时器该怎么办呢？可以基于`WindowedStream`调用`trigger()`方法，进行触发器的定义。**
 
-## 6.5、`ProcessWindowFunction`
+## 6.5、ProcessWindowFunction
 
 **`ProcessWindowFunction`的定义**
 
@@ -3873,13 +3873,13 @@ public abstract class ProcessWindowFunction<IN, OUT, KEY, W extends Window> exte
 
 **可以看到，`ProcessWindowFunction`的定义与`ProcessAllWindowFunction`几乎完全一样，只多出一个泛型`K`。**
 
-## 6.6 `CoProcessFunction`
+## 6.6、CoProcessFunction
 
-## 6.7 `ProcessJoinFunction`
+## 6.7、ProcessJoinFunction
 
-## 6.8 `BroadcastProcessFunction`
+## 6.8、BroadcastProcessFunction
 
-## 6.9 `KeyedBroadcastProcessFunction`
+## 6.9、KeyedBroadcastProcessFunction
 
 # 七、状态编程
 
@@ -3901,7 +3901,7 @@ public abstract class ProcessWindowFunction<IN, OUT, KEY, W extends Window> exte
 
 ![Flink-state-classify](./03-Flink.assets/Flink-state-classify-16822326210132.png)
 
-## 7.2、`Keyed State`
+## 7.2、Keyed State
 
 `Keyed State`是并行子任务按照`key`来访问和维护的状态，各状态之间以`key`进行隔离。在底层`Keyed State`类似于一个分布式的`Map`数据结构，所有的状态会根据`key`保存成`key-value`的形式，当一条数据到来时，任务就会自动将状态的访问范围限定为当前`key`，从`Map`结构种读取相应的状态值。
 
@@ -4770,7 +4770,7 @@ ValueState<Long> longValueState = getRuntimeContext.getValueState(new ValueState
 
 **==需要注意的是，所有集合类型的状态，例如，`ListState`，`MapState`，在设置`TTL`时，都是针对每一项元素的，也就是说，`ListState`中的每一个元素，都有自己的失效时间，当元素失效时，只会清理自身，不会对状态中的其他元素造成影响。==**
 
-## 7.3 `Flink`类型系统中的类
+## 7.3 Flink类型系统中的类
 
 `JVM`运行时会有泛型擦除，`Flink`无法准确地获取到数据类型，因此，在使用`Java API`的时候，需要手动指定类型，在使用`Scala API`时无需指定。
 
@@ -5308,7 +5308,7 @@ TypeHint<Tuple2<String, Integer>> typeHint1 = new TypeHint<Tuple2<String, Intege
 TypeInformation<Tuple> typeHint2 = Types.TUPLE(Types.STRING, Types.INT);
 ```
 
-## 7.4、`Operator State`
+## 7.4、Operator State
 
 另一大类受控状态就是算子状态。算子状态只正对当前算子并行任务有效，不需要考虑不同`key`的隔离。算子状态功能没有键控状丰富，应用场景也较少，方法调用也与键控状态有些区别。
 
