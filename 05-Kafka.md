@@ -204,4 +204,191 @@
 
 ## 3.1、生产者消息发送流程
 
+生产者客户端由`Java`代码实现，在生产者客户端中，消息的发布依赖两个线程的协调运行，这两个线程分别是`main`线程和`sender`线程。
+
+在`Kafka`生产者的逻辑中，`main`线程只关注向哪个分区中发送哪些消息；而`sender`线程只关注与哪个具体的`broker`节点建立连接，并将消息发送到所连接的`broker`中。
+
+-   **主线程：**主线程中接受的外部系统数据，会分别经过拦截器、序列化器和分区器的加工，形成带有`topic`以及分区信息的消息，随后这些消息将被缓存到消息累加器中，准备发送到`broker`中
+    -   **拦截器`interceptor`：**生产者拦截器可以在消息发送之前对消息进行定制化操作，如过滤不符合要求数据，修改消息内容，数据统计等
+    
+    -   **序列化器`serializer`：**数据进行网络传输和硬盘读写都需要进行序列化和反序列化
+    
+    -   **分区器`partitioner`：**对消息进行分区，便于发送到不同的分区中存储
+    -   **消息累加器`RecoderAccumulator`：**①：用于缓存经`main`线程处理好的消息；②：`sender`线程会拉取其中的数据进行批量发送，进而提高效率
+        -   `RecoderAccumulator`的缓存大小默认为`32M`
+        -   `RecoderAccumulator`内部为每个分区都维护了一个双端队列，即`Deque<ProduceBatch>`，消息写入缓存时，追加到队列的尾部
+        -   每个双端队列中以批`ProducerBatch`的形式存储消息，默认情况下，`ProducerBatch`的大小为`16K`
+    -   **`ProducerBatch`：**一个消息批次，由多条消息合并而成，默认大小为`16K`，`sender`从`RecoderAccumulator`中读取消息时，以`ProducerBatch`为单位进行读取，进而减少网络请求次数
+-   **`sender`线程：**`sender`线程从`RecoderAccumulator`中拉取到`RecoderBatch`后，会将`<partition, Deque<Producer Batch>>`形式的消息转换成`<Node,List< ProducerBatch>`形式的消息，即将消息的分区信息转换成对应的`broker`节点，随后，进一步封装成`<Node, Request>`的形式，这样形式的消息具备网络传输的条件。其中`Request`是`Kafka`的协议请求。
+    -   在`sender`线程中有一个用于缓存已经发出去但还没有收到服务端响应的请求的容器`InFlightRequests`。消息具备网络传输条件后，会被保存在`InFlightRequests`中，保存对象的具体形式为`Map<NodeId，Deque<Request>>`，其默认容量为`5`。
+
+
+**消息发送：**
+
+数据经过`main`线程和`sender`线程的处理后，就具备了进行网络传输的条件，`Kafka`的`broker`在接收到消息后会对`sender`线程进行应答，即`ack`应答
+
+**`ack(acknowledgment)`：生产者消息发送确认机制。`ack`有三个可选值`0，1，-1(all)`**
+
+-   **`ack = 0`：**生产者发送消息后，不需要等待消息在`broker`节点写入磁盘。该应答级别安全性低，但效率高
+-   **`ack = 1`：**生产者发送消息后，只需要分区副本中，`leader`分区接收，并写入磁盘，`broke`r便可以向生产者进行应答
+-   **`ack = -1(all)`：**生产者发送消息后，需要`ISR`列表中，所有副本都把接收到的消息写入到磁盘后，`broker`才会向生产者进行应答。该应答级别安全性高，效率低
+
+**`ISR(In-sync replicas)`：**同步副本。在最长滞后时间内（也就是一定时间内），能完成`leader`数据同步的副本称为同步副本。超过最长滞后时间，副本还未完成数据同步会被踢出`ISR`列表，加入`OSR`列表，当`OSR`列表中的副本完成`leader`副本中数据的同步，那么该副本会再次加入ISR列表
+
+**`OSR(outof-sync replicas)`：**滞后同步副本
+
+**`AR(all replicas)`：**全部副本。`AR = ISR + OSR`
+
+当消息发送给`broker`并收到`broker`的`ack`应答，那么消息就发送成功，此时，`RecoderAccumulator`和`InFlightRequests`会删除相应的`ProducerBatch`；如果没有收到`ack`应答，那么消息发送失败，此时，`sender`线程会重新发送该消息，重试的次数默认为`int`类型的最大值，即“死磕”。
+
+**生产者消息发送流程图**
+
 ![Kafka - 生产者消息发送原理及流程](./05-Kafka.assets/Kafka - 生产者消息发送原理及流程.png)
+
+## 3.2、生产者API
+
+在`IDEA`中编写`Kafka`代码首先需要引入`Kafka`的依赖：此处引入的是`Kafka 3.0`版本
+
+```xml
+<dependency>
+    <groupId>org.apache.kafka</groupId>
+    <artifactId>kafka-clients</artifactId>
+    <version>3.0.0</version>
+</dependency>
+```
+
+### 3.2.1 生产者发送数据
+
+编写生产者代码总共分为三步：一是创建生产者对象（即开启一个`Kafka`客户端）；二是发送数据；三是关闭资源（即关闭该`Kafka`客户端）。其中数据的发送有两种方式，一种是异步发送，一种是同步发送。这里所说的同步和异步，指的是外部数据与消息累加器`RecoderAccumulator`的同步和异步，同步发送时，外部数据发送到消息累加器后，还需要等待，消息从消息累加器成功发送给`broker`，才会发送下一条数据；而异步发送时，外部数据只需要成功发送给消息累加器，不管该数据有没有成功发送给`broker`，外部系统都可以继续向消息累加器发送数据。
+
+此外，在同步发送和异步发送的基础上，还可分为，带回调的数据发送和不带回调的数据发送。回调的信息同样由消息累加器返回，主要包含数据将发送到哪个主题、哪个分区以及消息写入`Kafka`的时间。
+
+同步数据发送和异步数据发送，在代码的体现上，主要在于，生产者调用`send()`方法发送数据时，有没有传入第二个`Callback`类型的参数。
+
+**使用不同方式进行数据发送**
+
+```java
+import org.apache.kafka.clients.producer.*;
+import org.apache.kafka.common.serialization.StringSerializer;
+
+import java.util.Properties;
+import java.util.concurrent.ExecutionException;
+
+/**
+ * @author shaco
+ * @create 2023-05-17 21:39
+ * @desc 生产者API：异步不带回调数据发送；带回调数据发送；同步不带回调数据发送；同步带回调数据发送
+ */
+public class Demo01_SendData {
+    public static void main(String[] args) throws ExecutionException, InterruptedException {
+        // TODO 0、Kafka生产者配置：通过ProducerConfig对象设置生产者的配置，并装入Properties集合中
+        // 创建Properties集合
+        Properties producerProp = new Properties();
+        // 配置Kafka集群连接地址，一般配置集群中的两个节点的访问地址和端口号，必须
+        producerProp.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,"hadoop132:9092,hadoop133:9092");
+
+        // 配置数据的序列化方式，Kafka中的数据存储和反序列化一般使用字符串
+        // Kafka中，数据一般以key-value的形式存在，所以需要分别配置key和value的序列化方式
+        producerProp.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        producerProp.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+
+        // TODO 1、创建生产者对象
+        KafkaProducer<String, String> producer = new KafkaProducer<String, String>(producerProp);
+
+        // TODO 2、发送数据
+        for (int i = 1;i < 5; i++) {
+            ProducerRecord<String, String> record = new ProducerRecord<>("first", "hello world " + i);
+            
+            // TODO 不带回调的异步数据发送方式，只需要调用send()方法将数据发送出去即可
+            producer.send(record);
+            
+            // TODO 带回调的异步数据发送方式，需要传入第二个Callback类型的参数
+            producer.send(record, new Callback() {
+                @Override
+                public void onCompletion(RecordMetadata metadata, Exception exception) {
+                    if (exception == null){ // 没有异常，说明数据发送成功
+                        String topic = metadata.topic();
+                        int partition = metadata.partition();
+                        long timestamp = metadata.timestamp();
+                        System.out.println("topic: " + topic + "，分区：" + partition + "，写入Kafka的时间：" + timestamp);
+                    }
+                }
+            });
+            
+            // TODO 不带回调的同步数据发送方式，只需要基于异步发送方式，再调用get()方法即可
+            producer.send(record).get(); // 注意要进行异常处理
+            
+            // TODO 带回调的同步数据发送方式，还需要传入第二个参数
+            producer.send(record, new Callback() {
+                @Override
+                public void onCompletion(RecordMetadata metadata, Exception exception) {
+                    if (exception == null){ // 没有异常，说明数据发送成功
+                        String topic = metadata.topic();
+                        int partition = metadata.partition();
+                        long timestamp = metadata.timestamp();
+                        System.out.println("topic: " + topic + "，分区：" + partition + "，写入Kafka的时间：" + timestamp);
+                    }
+                }
+            }).get(); // 注意要进行异常处理
+        }
+
+        // TODO 3、关闭资源
+        producer.close();
+    }
+}
+```
+
+**API相关说明：**
+
+**创建生产者对象时，所需要的配置说明：**创建生产者对象，需要通过`ProducerConfig`对象对生产者相关属性进行配置，`ProducerConfig`中声明了许多常量，用于配置生产者对象的属性，常用属性声明如下：
+
+```Java
+public class ProducerConfig extends AbstractConfig {
+
+    // Kafka集群连接地址
+    public static final String BOOTSTRAP_SERVERS_CONFIG = CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG;
+
+    // 数据的key的序列化方式
+    public static final String KEY_SERIALIZER_CLASS_CONFIG = "key.serializer";
+
+    // 数据的value的序列化方式
+    public static final String VALUE_SERIALIZER_CLASS_CONFIG = "value.serializer";
+
+    // 消息累加器中，每个双端队列里，ProducerBatch的大小，默认16K，达到该容量，sender线程将会来读取数据，发送给broker
+    public static final String BATCH_SIZE_CONFIG = "batch.size";
+
+    // ack应答级别
+    public static final String ACKS_CONFIG = "acks";
+
+    // 消息累加器中，每个双端队列里，ProducerBatch等待
+    public static final String LINGER_MS_CONFIG = "linger.ms";
+
+    /** <code>compression.type</code> */
+    public static final String COMPRESSION_TYPE_CONFIG = "compression.type";
+
+    /** <code>max.in.flight.requests.per.connection</code> */
+    public static final String MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION = "max.in.flight.requests.per.connection";
+
+    /** <code>retries</code> */
+    public static final String RETRIES_CONFIG = CommonClientConfigs.RETRIES_CONFIG;
+
+    /** <code>partitioner.class</code> */
+    public static final String PARTITIONER_CLASS_CONFIG = "partitioner.class";
+
+    /** <code>interceptor.classes</code> */
+    public static final String INTERCEPTOR_CLASSES_CONFIG = "interceptor.classes";
+
+    /** <code> transaction.timeout.ms </code> */
+    public static final String TRANSACTION_TIMEOUT_CONFIG = "transaction.timeout.ms";
+
+    /** <code> transactional.id </code> */
+    public static final String TRANSACTIONAL_ID_CONFIG = "transactional.id";
+
+    public static final String SECURITY_PROVIDERS_CONFIG = SecurityConfig.SECURITY_PROVIDERS_CONFIG;
+
+    private static final AtomicInteger PRODUCER_CLIENT_ID_SEQUENCE = new AtomicInteger(1);
+
+}
+
+```
+
