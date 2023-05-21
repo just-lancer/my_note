@@ -200,7 +200,7 @@
             kafka-console-consumer.sh --bootstrap-server hadoop132:9092 --topic first
             ```
 
-# 三、Kafka框架原理
+# 三、Kafka生产者
 
 ## 3.1、生产者消息发送流程
 
@@ -629,9 +629,126 @@ public class Demo02_CustomerPartitioner implements Partitioner {
 -   **设置事务超时时间：**使用`KafkaProducer`的`transactionTimeoutMs`属性设置事务超时时间，超时后事务会被中止
 -   **设置事务隔离级别：**使用`KafkaProducer`的`isolation.level`属性设置事务隔离级别，可选值为`read_committed`和`read_uncommitted`，默认为`read_uncommitted`
 -   **开启事务：**使用`KafkaProducer`的`beginTransaction()`方法开启一个事务
--   **发送事务消息：**使用`KafkaProducer`的`send()`方法发送消息，消息会被缓存到事务中
 -   **提交事务：**使用`KafkaProducer`的`commitTransaction()`方法提交事务，提交后消息才会被真正发送到Kafka集群
 -   **中止事务：**使用`KafkaProducer`的`abortTransaction()`方法中止事务，中止后事务中的消息会被丢弃
 -   **检查事务状态：**使用`KafkaProducer`的`inTransaction()`方法检查当前是否处于事务中
 
-Kafka事务的使用可以保证消息的原子性和一致性，避免了消息发送过程中的数据丢失和重复发送等问题。但是，Kafka事务的使用也会增加一定的系统开销和延迟，因此需要根据实际情况进行权衡和选择。
+**演示案例：开启事务发送数据，如果遇到异常，回滚事务。同时对生产者进行一些的配置**
+
+```Java
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import java.util.Properties;
+
+/**
+ * Author: shaco
+ * Date: 2023/5/20
+ * Desc: 生产者事务：开启事务发送数据，如果遇到异常，回滚事务
+ */
+public class Demo03_ProducerTransaction {
+    public static void main(String[] args) {
+        // 0、生产者配置
+        Properties prop = new Properties();
+
+        // 配置Kafka集群连接地址
+        prop.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,"hadoop132:9092");
+
+        //配置key-value序列化方式
+        prop.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        prop.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+
+        // 配置消息累加器RecoderAccumulator的大小，设置为64M，该参数的配置单位为字节
+        prop.put(ProducerConfig.BUFFER_MEMORY_CONFIG,64*1024*1024);
+
+        // 配置数据批ProducerBatch大小，配置为32K，参数的单位是字节
+        prop.put(ProducerConfig.BATCH_SIZE_CONFIG,32*1024);
+
+        // 配置ProducerBatch攒批，也就是等待数据的时间，配置为300 ms
+        prop.put(ProducerConfig.LINGER_MS_CONFIG, 300);
+
+        // 配置ACK应答级别
+        prop.put(ProducerConfig.ACKS_CONFIG,"-1");
+
+        // 使用并配置压缩方式
+        prop.put(ProducerConfig.COMPRESSION_TYPE_CONFIG,"snappy");
+
+        // TODO 配置事务ID，开启生产者事务必须配置，只有一个要求，Kafka集群中唯一即可，取值随意
+        prop.put(ProducerConfig.TRANSACTIONAL_ID_CONFIG,"transaction_id");
+
+        // 配置Kafka生产者事务超时时间，默认超时时间1分钟，配置单位毫秒
+        prop.put(ProducerConfig.TRANSACTION_TIMEOUT_CONFIG,3 * 60 * 1000);
+
+        // 1、创建生产者对象
+        KafkaProducer<String, String> kafkaProducer = new KafkaProducer<>(prop);
+
+        // 开启事务
+        kafkaProducer.beginTransaction();
+
+        try{
+            // 发送数据
+            for (int i = 1; i <= 5;i++){
+                if (i!=3){
+                    ProducerRecord<String, String> record = new ProducerRecord<>("first", "hello world " + i);
+                    kafkaProducer.send(record);
+                }
+            }
+
+            // 提交事务
+            kafkaProducer.commitTransaction();
+        }catch (Exception e){
+            // 遇到异常，终止事务
+            kafkaProducer.abortTransaction();
+        }finally {
+            // 关闭资源
+            kafkaProducer.close();
+        }
+    }
+}
+```
+
+**`Kafka`事务的使用可以保证消息的原子性和一致性，避免了消息发送过程中的数据丢失和重复发送等问题。但是，`Kafka`事务的使用也会增加一定的系统开销和延迟，因此需要根据实际情况进行权衡和选择。**
+
+### 3.3.4 数据乱序分析及优化
+
+对于`Kafka`而言，为了提高并行度设置了主题分区，分区之间毫无关系，各自为政，因此数据有序只针对分区内有序，分区间，`Kafka`无法保证数据有序。
+
+数据乱序出现的地方在`sender`线程的`InFlightRequests`这个容器中，这个容器缓存着已发送但还没有收到`ack`应答的消息。当`InFlightRequests`中排在前面的消息发送失败，并进行重试时，排在后面的消息如果发送成功，那么就会出现数据乱序。
+
+**数据乱序的解决：**
+
+在`Kafka 1.x`版本之前，要想保证分区内数据有序，必须要将`InFlightRequests`的容量设置为`1`，即只让这个容器每次只发送一条数据，即使失败了，也必须等这条数据发送完成。
+
+在`Kafka 1.x`版本之后，由于新增了幂等性，可以通过幂等性保证分区内有序。
+
+当未开启幂等性时，为了保证分区内数据有序仍然需要将`InFlightRequests`的容量设置为`1`。
+
+在开启了幂等性后，需要将·的容量设置小于等于`5`就能够保证分区内有序，原因在于，开启幂等性之后，`Kafka`服务端会缓存生产者发送的最近的`5`个数据，以及这些数据的元数据信息，那么服务端利用元数据信息中，数据的唯一标识`<Producer ID, Partition, Sequence Number>`中的`Sequence Number`，就能够对数据进行排序，就能够保证分区内数据有序。由于服务端只能保存生产者发送的最近的`5`个数据，因此，也需要`InFlightRequests`缓存的数据也必须小于等于`5`。
+
+**配置`InFlightRequests`容量的参数为`max.in.flight.requests.per.connection`，该参数也能在`ProducerConfig`中进行配置。**
+
+## 3.4 生产者常用配置参数
+
+**以下配置项均是`Kafka producer-properties`配置文件的配置项，通过`ProducerConfig`也能够进行配置**
+
+-   **`bootstrap.servers`：生产者连接集群所需的`broker`地址清单。可以设置`1`个或者多个，中间用逗号隔开。这里并非需要所有的`broker`地址，因为生产者从给定的`broker`里查找到其他`broker`信息，`zookeeper`或者`controler`中有相关信息**
+-   **`key.serializer`：指定发送消息的`key`的序列化类型。一定要写全类名**
+-   **`value.serializer`：指定发送消息的`value`的序列化类型。一定要写全类名**
+-   **`buffer.memory`：`RecordAccumulator`缓冲区总大小，默认`32 M`**
+-   **`batch.size`：当`RecordAccumulator`中`ProducerBatch`数据量达到`batch.size`(默认值`16 K`)时，形成一个`ProducerBatch`，以备`sender`进行网络传输**
+-   **`linger.ms`：每隔`linger.ms`的间隔，在`RecordAccumulator`形成一个`ProducerBatch`，并添加到分区队列中，以备`sender`进行网络传输。默认值为`0 ms`**
+-   **`acks`：`0`，生产者发送数据之前，无需获得数据写入磁盘的应答；`1`，生产者发送数据需要等待`leader`副本写入磁盘的应答；`-1 (all)`，生产者发送数据需要等待所有`ISR`列表中的副本写入磁盘的应答。默认值为`-1`**
+-   **`retries`：当消息发送出现错误的时候，系统会重发消息，`retries`表示重试次数，默认是`int`最大值`2147483647`**
+-   **`retry.backoff.ms`：两次重试之间的时间间隔，默认是`100 ms`**
+-   **`enable.idempotence`：是否开启幂等性，默认`true`，开启幂等性**
+-   **`compression.type`：生产者发送的数据的压缩方式。默认是`none`，也就是不压缩。支持压缩类型：`none`、`gzip`、`snappy`、`lz4`和`zstd`**
+-   **`max.in.flight.requests.per.connection`：已经发出去但还没有收到`broker`响应的请求，即`InFlightRequests`的容量，默认为`5`，开启幂等性要保证该值是小于等于`5`**
+
+# 四、Broker
+
+`broker`由`Scala`语言实现，在Kafka集群中主要负责数据的存储。
+
+4.1、zookeeper维护的Kafka节点信息
+
+在Kafka2.8版本之前，Kafka需要借助zookeeper来进行分布式数据一致性协调。
