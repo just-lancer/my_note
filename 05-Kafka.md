@@ -749,6 +749,102 @@ public class Demo03_ProducerTransaction {
 
 `broker`由`Scala`语言实现，在Kafka集群中主要负责数据的存储。
 
-4.1、zookeeper维护的Kafka节点信息
+## 4.1、zookeeper维护的Kafka节点信息
 
-在Kafka2.8版本之前，Kafka需要借助zookeeper来进行分布式数据一致性协调。
+在`Kafka 2.8`版本之前，`Kafka`需要借助`zookeeper`来进行分布式数据一致性协调，而随着大数据的发展，数据量地激增，频繁地访问`zookeeper`成为了`Kafka`性能地瓶颈，因此，在`Kafka 2.8`版本之后，`Kafka`将所有保存在`zookeeper`中的信息保存在本地的系统主题中。
+
+`zookeeper`中，`Kafka`节点所包含的信息有很多，需要重点关注的有三个节点信息。
+
+-   **`/Kafka/brokers/ids` ：**该`zookeeper`节点记录了当前`Kafka`集群中有哪些`broker`节点。例如，**`/Kafka/brokers/ids [0, 1, 2]`**，表示当前集群有`0, 1, 2`三个`broker`
+-   **`/Kafka/brokers/topics` ：**该节点记录了当前主题的各个分区以及分区副本的`ISR`。例如，`/Kafka/broker/topics/[topic name]/partitions/[partitionID]/state {"leader" : 1, "isr" : [1, 0, 2]}`，表示当前主题下，指定分区的副本`(ISR)`有`1, 0, 2`，其中`1`号`broker`节点上的副本为`leader`副本
+-   **`/Kafka/controller `：**该节点记录了中央控制器`(center controller)`所在的`broker`节点，例如，`/Kafka/controller {"broker" : 1}`，表示当前集群的中央控制器在`1`号`broker`节点上中央控制器用于控制消费者组的消费策略
+
+`zookeeper`在`Kafka`中的作用：
+
+-   `broker`节点注册信息
+-   `topics`注册信息
+-   `leader`选举和`follower`信息同步管理，中央控制器注册信息
+-   生产者负载均衡
+-   消费者负载均衡
+-   分区与消费者关系
+-   消息消费进度`offset`管理，`Kafka 0.9`版本后由`Kafka`自己来管理，相关信息存储在系统主题中
+-   消费者注册
+
+## 4.2、broker启动流程
+
+`broker`是`Kafka`集群中，用于存储数据的模块，每个主题都有`1`个至多个分区，每个分区也有一定数量的副本，不同于`Hadoop`中，数据存储副本是同一级别的，`Kafka`中，每个主题的分区副本有`leader`和`follower`之分，生产者和消费者都将与`leader`进行数据交互。因此，`broker`的启动最主要的问题在于如何选举产生leader`，`而在其运行时，最主要的问题在于当`leader`和`follower`宕机时该如何处理。
+
+**`broker`启动流程：**
+
+-   每个`broker`启动时，都会到`zookeeper`的`/kafka/brokers/ids`上节点进行注册，即创建属于自己的节点信息。节点信息包括`broker`的`IP`地址和端口号。`broker`注册的节点类型是临时节点，当`broker`宕机，相应节点会被删除
+-   与此同时，也会进行中央控制器`center controller`注册，`controller`的注册方式是抢占式注册，一旦有`controller`在`zookeeper`上注册成功，那么该`controller`便成为所有`controller`的`leader`
+-   选举出来的`leader controller`会对`broker`节点进行监听，即监听`zookeeper`的`/Kafka/brokers/ids`节点中的信息。除此之外，`leader controller`还将进行分区副本`leader`的选举。选举规则：
+    -   **`broker`节点必须存活，即`leader`必须是`ISR`列表中的节点**
+    -   **`broker`在`AR`列表中的顺序越靠前，成为`leader`的优先级越高**
+-   分区副本`leader`确定后，`leader controller`会将分区副本`leader`的相关信息写入到`zookeeper`的`/kafka/bokers/topics/[topic]/partitions/[partitionID]/state`节点上，随后其他非`leader controller`到`zookeeper`该节点同步该节点的信息，以便于当`leader controller`挂掉，其他`controller`能够随时抢占注册成为`leader`，提供服务
+-   至此，`Kafka broker`集群的首次启动完成，第一次分区副本`leader`选举完成
+
+>   对于非第一次启动，由于`zookeeper`的节点中存储着各个分区副本的信息，因此非第一次启动分区副本的`leader`不会发生变化，但是由于`center controller`在`zookeeper`中是抢占式注册，所以每一次启动`Kafka`集群，`leader controller`都会不同。
+
+![Kafka-broker启动流程](./05-Kafka.assets/Kafka-broker启动流程.png)
+
+-   当`leader`挂掉，`/kafka/brokers/ids`节点数据发生更新，`controller`监听该节点中`leader`属性的`broker`产生变化，那么会开始进行分区副本`leader`的选举。首先，从`/kafka/brokers/topics/[topic]/partitions/[partitionID]/state`节点中获取`ISR`列表和`leader`信息，重新开始分区副本`leader`的选举，选举规则依然不变，选举出`leader`后，依然将信息同步到该节点
+
+## 4.3、分区副本leader和follower故障时的数据同步问题
+
+**相关概念：**
+
+-   **`LEO(Log End Offset)`，标识当前日志文件中下一条待写入的消息的`offset`**
+-   **`HW(High Watermark)`：所有副本中最小的`LEO`**
+
+**follower故障时的数据同步:**
+
+-   `follower`发生故障后会被踢出`ISR`，进入`OSR`
+-   期间，`leader`继续接收数据，其他`follower`继续同步`leader`的数据
+-   当故障的`follower`恢复后，会读取本地磁盘记录的`HW`，并将文件中`offset`高于`HW`的数据删除，并从`HW`开始同步`leader`的数据
+-   当`follower`的数据同步跟上整个分区副本后，即可将该`follower`重新加入`ISR`列表。即`follower`的`LEO`大于等于该分区的`HW`
+
+**注意：`follower`的`LEO`大于等于分区`HW`，表明`follower`已经跟上了`ISR`列表中同步`leader`数据最慢的`follower`，最慢的`follower`都能够在`ISR`中，那么该`follower`也能够在`ISR`中**
+
+**`leader`故障时的数据同步**
+
+-   当`leader`发生故障时，`controller`会重新选举出新的`leader`
+-   以当前分区的`HW`为准，`ISR`中其他`follower`高于`HW`的数据会被截取掉
+-   随后`leader`和`follower`开始正常工作
+
+**注意：`leader`发生故障时的数据同步只能保证副本间数据的一致性，无法保证数据的可靠性**
+
+## 4.4、broker文件管理机制
+
+### 4.4.1 文件存储机制
+
+-   **`topic`：**主题，`Kafka`中数据管理的逻辑单元，并不实际存储数据，类似数据库管理系统中的库和表
+
+-   **`partition`：**分区，`topic`物理上的分组，一个`topic`能够分为多个`partition`，每一个`partition`是一个有序的队列
+-   **`segment`：**分片，`partition`物理上的进一步细分，一个`partition`由多个`segment`组成
+-   **`offset`**：偏移量。每个`partition`都由一系列有序的、不可变的消息组成，每条消息都用一个连续的序列号维护，用于标识该消息在`partition`中的位置
+
+**`Kafka`文件存储机制：**
+
+-   一个`topic`可以由多个`partition`组成，每个`partition`都是一个文件夹，其命名方式为：主题名-序列号，即`[topic_name]-[num]`，其中序列号从`0`开始
+-   一个`partition`由多个`segment`组成，每个`segment`是一系列文件的集合，其命令方式为：`partition`全局的第一个`segment`从`0 (20个0)`开始，后续的每一个`segment`文件名是上一个`segment`文件中最后一条消息的`offset`值。这些文件包含主要的三个文件：`(20个0).index/.log/.timeindex`，其中`.log`是真实数据的存储文件，`.index`是数据的索引文件，`.timeindex`是每条数据的时间戳。默认条件下，每个`segment`文件大小为`1 G`，即`.log .index .timeindex`等文件大小之和为`1 G`
+
+```txt
+假设/kafka/data为Kafka中数据存储的根目录，即在Kafka配置文件中配置log.dir=/kafka/data
+
+Kafka文件目录结构：以单topic，单分区，单segment为例，分区名为first
+
+|---- first-0
+    |---- 00000000000000000000.log
+    |---- 00000000000000000000.index
+    |---- 00000000000000000000.timeindex
+    |---- ......
+    
+.log文件中存储具体的数据
+.index文件维护了数据的相对offset，这样能够使得offset的值不会占用很大的空间；另外，.index文件还维护了数据的稀疏索引，这样的设计能够在降低索引维护成本的同时提高数据查询的效率，每当.log文件添加4K数据，.index文件就会维护一条索引
+```
+
+**相关参数：**
+
+-   **`log.segment.bytes`：**每个`segment`的大小，默认是`1 G`
+-   **`log.index.interval.bytes`：**`.index`维护索引的稀疏度，默认值为`4 K`，即`.log`文件每添加`4 K`数据，`.index`维护一条索引
