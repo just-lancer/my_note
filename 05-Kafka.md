@@ -200,7 +200,7 @@
             kafka-console-consumer.sh --bootstrap-server hadoop132:9092 --topic first
             ```
 
-# 三、Kafka生产者
+# 三、生产者
 
 ## 3.1、生产者消息发送流程
 
@@ -499,7 +499,7 @@ public class Demo02_CustomerPartitioner implements Partitioner {
 }
 ```
 
-## 3.3、Kafka生产经验
+## 3.3、Producer生产经验
 
 ### 3.3.1 优化：生产者提高吞吐量
 
@@ -790,7 +790,7 @@ public class Demo03_ProducerTransaction {
 
 -   当`leader`挂掉，`/kafka/brokers/ids`节点数据发生更新，`controller`监听该节点中`leader`属性的`broker`产生变化，那么会开始进行分区副本`leader`的选举。首先，从`/kafka/brokers/topics/[topic]/partitions/[partitionID]/state`节点中获取`ISR`列表和`leader`信息，重新开始分区副本`leader`的选举，选举规则依然不变，选举出`leader`后，依然将信息同步到该节点
 
-## 4.3、分区副本leader和follower故障时的数据同步问题
+## 4.3、分区副本leader和follower的故障处理
 
 **相关概念：**
 
@@ -848,3 +848,123 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 
 -   **`log.segment.bytes`：**每个`segment`的大小，默认是`1 G`
 -   **`log.index.interval.bytes`：**`.index`维护索引的稀疏度，默认值为`4 K`，即`.log`文件每添加`4 K`数据，`.index`维护一条索引
+
+### 4.4.2、文件清理机制
+
+`segment`中的`.timeindex`文件维护了数据的时间戳，时间戳分为两类，`CreateTime`和`LogAppendTime`。`CreateTime`表示`producer`创建这条消息的时间；`logAppendTime`表示`broker`接收到这条消息的时间，严格来说，是`leader broker`将这条消息写入到`log`的时间。
+
+引入时间戳主要为了解决三个问题：
+
+-   日志保存`(log retention)`策略，`Kafka`默认间隔`7`天会删除过期日志。判断依据就是比较日志段文件`(log segment file)`的最新修改时间`(last modification time)`，如果最近一次修改发生于`7`天前，那么就会视该日志段文件为过期日志，执行清除操作
+-   日志切分`(log rolling)`策略：与日志保存是一样的道理。当前日志段文件会根据规则对当前日志进行切分，即，创建一个新的日志段文件，并设置其为当前激活`(active)`日志段。其中有一条规则就是基于时间的`(log.roll.hours，默认是7天)`，即当前日志段文件的最新一次修改发生于`7`天前的话，就创建一个新的日志段文件，并设置为`active`日志段
+-   流式处理`(Kafka streaming)`：流式处理中需要用到消息的时间戳
+
+数据清理策略有两种：
+
+-   `delete`，删除数据，将所有需要清理的数据都删除
+-   `compact`，数据压缩，保留相同`key`中最新的那个`value`，其余的`value`都删除
+
+配置参数：`log.cleanup.policy`  默认值为`delete`，表示默认删除需要清理的数据
+
+数据清理单位有两种：
+
+-   以`segment`文件为单位，删除数据时，将整个`segment`文件删除
+-   以数据为单位，删除数据时，只删除满足清理条件的数据。使用场景为，一个`segment`文件中，一部分数据需要删除
+
+数据清理条件有两种：基于`segment`删除
+
+-   基于时间：`Kafka`默认清理条件，以`segment`中，所有数据中，最大时间戳为该`segment`文件的时间戳
+-   基于文件大小：当所有的`segment`大小之后超过设置的大小，删除时间最早的`segment`
+
+## 4.5、Kafka高效读写原理
+
+-   `Kafka`本身是分布式集群，又采用了数据分区存储方式，数据并行读写，效率高
+-   `Kafka`采用顺序写磁盘的方式进行数据存盘，即写磁盘过程，数据一直向文件末尾追加，写数据效率高
+-   `Kafka`维护了数据的稀疏索引，在数据消费时，效率高
+-   页缓存技术和零拷贝技术，减少了数据`IO`次数，提升了数据传输效率
+    -   页缓存技术：在操作系统向硬盘写入数据时，会先将数据保存在页缓存（一块内存空间）中，页缓存再向硬盘中写入数据。同样，操作系统读取数据时，先在页缓存中查找，如果找不到再去硬盘中查找。实际上，页缓存是尽可能多的把空闲内存都当作磁盘缓存来使用
+    -   零拷贝技术：在`Kafka`中，数据的处理操作都交给生产者和消费者，`broker`只进行数据存储，因此，在消费者消费数据时，存储在硬盘中的数据不需要重新添加到`broker`中，直接从页缓存通过网络传输到消费者
+
+## 4.6、broker生产经验
+
+在生产环境中，当需要对`Kafka`进行扩容时，就需要添加新的`Kafka`节点；当`Kafka`资源空闲太多时，也需要调整`Kafka`集群的规模。在服役新的`Kafka`节点和退役原有的`Kafka`节点的过程中，最重要的是`Kafka`节点的负载均衡。
+
+在服役新节点时，新加入的`Kafka`节点数据存储较少，而原有的`Kafka`节点数据存储量较多。为了实现`Kafka`集群各节点的负载均衡，需要手动调整各个节点的数据存储。
+
+在退役原有节点时，为了保证数据不丢失，也需要将退役节点的数据分配到未退役节点上，这也是需要手动调整各个节点数据存储。
+
+此外，对于主题的分区和副本，通过命令行能够将分区数量增大，但不能减少，而副本数量的调整完全无法通过命令行直接实现，因此如果需要调整分区和副本的数量也需要手动进行。
+
+### 4.6.1 服役和退役节点
+
+服役和退役节点的过程是一样的，区别在于，生成负载均衡计划的时候，服役节点时，配置的节点数量是增加，退役节点时，配置的节点数量时减小的。
+
+**以服役新节点为例，介绍负载均衡过程：对应操作的主题是`first`，假设`first`主题有`3`个分区，`2`个副本**
+
+-   针对要进行负载均衡的主题，创建一个`json`文件，配置主题信息，文件绝对路径：`/home/justlancer/config.json/load_balancing_plan.json`。一般情况下，对于服役和退役节点需要对所有的主题进行负载均衡
+
+    ```json
+    {
+      "topics": [
+        {
+          "topic": "first"
+        }
+      ],
+      "version": 1
+    }
+    ```
+
+-   生成负载均衡计划，执行命令：`bin/kafka-reassign-partitions.sh --bootstrap-server hadoop132:9092 --topics-to-move-json-file /home/justlancer/config.json/load_balancing_plan.json --broker-list "2,3,4,5" --generate `。可以得到主题当前数据存储的策略和新的数据存储策略
+
+    ```txt
+    Current partition replica assignment
+    {"version":1,"partitions":[{"topic":"first","partition":0,"replicas":[3,4],"log_dirs":["any","any"]},{"topic":"first","partition":1,"replicas":[4,2],"log_dirs":["any","any"]},{"topic":"first","partition":2,"replicas":[2,3],"log_dirs":["any","any"]}]}
+    
+    Proposed partition reassignment configuration
+    {"version":1,"partitions":[{"topic":"first","partition":0,"replicas":[3,2],"log_dirs":["any","any"]},{"topic":"first","partition":1,"replicas":[4,3],"log_dirs":["any","any"]},{"topic":"first","partition":2,"replicas":[5,4],"log_dirs":["any","any"]}]}
+    ```
+
+    在这里，新增了一个`broker`节点`5`，原本的`Kafka`集群各节点的`id`分别是`2`，`3`，`4`。详情见**大数据组件部署文档**。
+
+-   将新的执行策略复制到一个新的文件中，文件绝对路径：`/home/justlancer/config.json/execute_load_balancing_plan.json`
+
+-   执行负载均衡计划，即可将数据按照新的数据存储策略进行存储，执行命令：`bin/kafka-reassign-partitions.sh --bootstrap-server hadoop132:9092 --reassignment-json-file /home/justlancer/config.json/execute_load_balancing_plan.json --execute`
+
+    **对于退役节点而言，只需要在生成负载均衡计划时，将`--broker-list`参数的值配置为退役节点后剩余节点的值即可，其余步骤都是相同的。**
+
+### 4.6.2 手动调整分区副本存储策略
+
+与服役、退役节点相似，手动调整分区副本存储策略，也需要执行负载均衡命令：`bin/kafka-reassign-partitions.sh --bootstrap-server hadoop132:9092 --reassignment-json-file <file_name> --execute`。区别在于，服役、退役节点能够通过Kafka命令进行自动生成执行计划，而手动调整分区副本存储策略，需要手动编写执行计划，其格式都是json格式，内容基本一致。
+
+**手动编写分区副本执行计划：**
+
+```json
+{
+    "version":1,
+    "partitions":[
+                    {"topic":"three","partition":0,"replicas":[0,1]},
+                    {"topic":"three","partition":1,"replicas":[0,1]},
+                    {"topic":"three","partition":2,"replicas":[1,0]},
+                    {"topic":"three","partition":3,"replicas":[1,0]}
+                ]
+}
+```
+
+其中的分区数量和分区的副本数量及副本所在节点位置都可以手动进行配置。配置好执行计划后，再执行命令即可。
+
+## 4.7、broker常用配置参数
+
+-   `replica.lag.time.max.ms`：`follower`与`leader`通信或数据同步请求的时间间隔，超过时间间隔未发生通信，会将`follower`踢出`ISR`列表。默认时间`30 s`
+-   `auto.leader.rebalance.enable`：是否允许定期进行`leader`选举，默认值为`true`。该参数表示，当满足一定条件时，重新选举，更换`leader`，就是以前有`leader`，换一个`leader`。
+-   `leader.imbalance.per.broker.percentage`：当`broker`集群的不平衡率达到`10%`时，重新选举`leader`，更换以前的`leader`。默认值`10%`
+    -   需要说明的是，频繁地更换`leader`会产生很多不必要的性能开销，而不开启`leader`重选举可能造成一些问题
+-   `leader.imbalance.check.interval.seconds`：检查`broker`集群的不平衡率的时间间隔，默认值`300 s`
+-   `log.segment.bytes`：`segment`文件大小配置项，默认值`1G`
+-   `log.index.interval.bytes`：`.index`文件中稀疏索引的稀疏度，默认值`4 K`
+-   `log.retention.hours`：`log`数据保存时长，默认值`7`天
+-   `log.retention.check.interval.ms`：检查数据保存时间是否超时，默认值`5 min`
+-   `log.retention.bytes`：当所有`segment`文件大小之和超过设置的值，删除最早的`segment`文件，默认值为`-1`，表示无穷大。`segment`文件的时间以其中保存的最新的数据为其文件的时间，最新的数据即时间戳最大的数据
+-   `log.cleanup.policy`：数据清理的策略，默认值`delete`，表示直接删除数据
+
+# 五、消费者
+
