@@ -4,17 +4,19 @@
 
 ## 1.1、引言
 
-`Kafka`是一个分布式的基于发布/订阅模式的消息队列，主要应用于大数据实时处理领域。
+`Kafka`是一个分布式的，基于发布/订阅模式的消息队列，主要应用于大数据实时处理领域。
 
-发布/订阅模式：消息的发布者不会将消息直接发送给特定的订阅者，而是将待发布的消息分为不同的类别，订阅者只订阅感兴趣的消息。
+发布/订阅模式：消息的发布者不会将消息直接发送给特定的订阅者，而是将待发布的消息分为不同的类别，存储在`Kafka`中，订阅者只订阅感兴趣的消息。
 
 `Kafka`新定义：`Kafka`是一个开源的分布式事件流平台，被用于高性能数据管道、流分析、数据集成和关键任务应用。
 
 目前较为常见的消息队列有`Kafka`、`RabbitMQ`、`RocketMQ`，在大数据场景中，主要使用`Kafka`作为消息队列，在`Java`后端开发中，主要采用`RabbitMQ`和`RocketMQ`。
 
-消息队列作为消息中间件，将具体业务和底层逻辑解耦，例如，需要利用服务的人（前端），不需要知道底层逻辑（后端）的实现，只需要拿着中间件的结果使用就可以了，因此，消息队列的主要应用场景有三个：消峰、解耦和异步。
+消息队列作为消息中间件，将具体业务和底层逻辑解耦，例如，需要利用服务的人（前端），不需要知道底层逻辑（后端）的实现，只需要拿着中间件的结果使用就可以了。
 
-但消息队列的使用也会带来一定的问题：使用消息队列后，会增加系统的复杂性和系统维护问题，以及系统使用过程中会出现的各种问题，主要问题是消息重复消费、消息丢失、消息顺序错乱等。
+消息队列的主要应用场景有三个：消峰、解耦和异步。
+
+消息队列的使用也会带来一定的问题：使用消息队列后，会增加系统的复杂性和系统维护问题，以及系统使用过程中会出现的各种问题，主要问题是消息重复消费、消息丢失、消息顺序错乱等。
 
 -   **消峰：**将高峰期的请求放入消息队列中，由消费者自行进行消息订阅或消费，能够解决客户端请求速度与服务端处理请求速度不匹配而引发的服务崩溃问题![Kafka-消峰](./05-Kafka.assets/Kafka-消峰.png)
 
@@ -22,30 +24,30 @@
 
 ![kafka-解耦](./05-Kafka.assets/kafka-解耦.png)
 
--   **异步：**消息发送者发出消息后，立即继续执行下一步，不等待消息接收者的返回消息或控制![Kafka-异步](./05-Kafka.assets/Kafka-异步-16841576534508.png)
+-   **异步：**消息发送者发出消息后，立即继续执行下一步，不需要等待消息接收者的返回消息或控制![Kafka-异步](./05-Kafka.assets/Kafka-异步-16841576534508.png)
 
 ## 1.2、Kafka相关概念
 
--   **消息`Message`：**消息是`KafKa`数据传输的基本单位，由一个固定长度的消息头和一个可变长度的消息体构成。在旧版本中，每一条消息称为`Message`；在由`Java`重新实现的客户端中，每一条消息称为`Record`
--   **`broker`：**`KafKa`集群就是由一个或者多个`KafKa`节点（或称为实例）构成，每一个`KafKa`节点称为`broker`。一个节点就是一台服务器上的`Kafka`服务。`broker`由`Scala`语言实现
--   **生产者`producer`：**消息的生产者，即向`broker`推送数据的客户端，一般是`Java`代码实现的
--   **消费者`consumer`**：消息的消费者，即从`broker`中拉取数据的客户端，一般也是`Java`代码实现
-    -   每个消费者都有一个全局唯一的`id`，通过配置项`client.id`指定。如果代码中没有指定消费者的`id`，`KafKa`会自动为该消费者生成一个全局唯一的`id`
-
--   **消费者组`consumer group`：**消费者组由多个消费者构成。消费组是`KafKa`实现对一个`topic`消息消费的手段，即消费者组是逻辑上的一个订阅者。单独的一个消费者也是`topic`的订阅者，因为`Kafka`会为单独的一个消费者设置消费者组，即这个消费者组只有这一个消费者
-    -   在`KafKa`中，每个消费者都属于一个特定的消费者组，默认情况下，消费者属于默认的消费组`test-consumer-group`，通过`group.id`配置项，可以为每个消费者指定消费组
-    -   在消费者组内，不同的消费者不能消费同一个`topic`相同分区的消息，换句话说，一个分区的消息只能由一个消费者消费，原因是进行并行消费，提高效率
 -   **主题`topic`：**
     -   `topic`是指一类消息的集合，在`Kafka`中用于分类管理消息的逻辑单元，类似于数据库管理系统中的库和表，只是逻辑上的概念
     -   `topic`作为`Kafka`中的核心概念，将生产者和消费者解耦。生产者向指定`topic`中发布消息，消费者订阅指定`topic`的消息
     -   `topic`可以被分区用以提高并发处理能力和可扩展性
--   **分区`partition`：**`topic`是许多消息的集合
-    -   当消息特别多（即`topic`特别大），为了方便消息的管理，`Kafka`将`topic`进行分区管理
-    -   一个`topic`能够被分为许多个分区，每个分区由一系列有序、不可变的消息组成，是一个有序队列
-    -   每个`topic`的分区数可以在`Kafka`启动时加载的配置文件中配置，也可以在创建`topic`的时候进行设置，还可以在代码中进行设置
+-   **分区`partition`：**主题是许多消息的集合
+    -   当消息特别多（即主题特别大），为了方便消息的管理，`Kafka`将主题进行分区管理
+    -   一个主题能够被分为许多个分区，每个分区由一系列有序、不可变的消息组成，是一个有序队列
+    -   每个主题的分区数可以在`Kafka`启动时加载的配置文件中配置，也可以在创建主题的时候进行设置，还可以在代码中进行设置
     -   每个分区又有一至多个副本，分区的副本分布在`Kafka`集群的不同`broker`上，以提高数据的可靠性
--   **`leader`：**每个分区所有副本中的”老大“，用于对接生产者，接收生产者发送的消息；也用于对接消费者，接受消费者发送的消费消息的请求
+-   **`leader`：**每个分区所有副本中的”老大“，用于对接生产者，接收生产者发送的消息；也用于对接消费者，接收消费者发送的消费消息的请求
 -   **`follower`：**每个分区所有副本中不是`leader`的副本，实时从`leader`中同步数据，当`leader`发生故障时，`Kafka`会从`follower`中选举出新的`leader`
+-   **消息`Message`：**消息是`KafKa`数据传输的基本单位，由一个固定长度的消息头和一个可变长度的消息体构成。在旧版本中，每一条消息称为`Message`；在由`Java`重新实现的客户端中，每一条消息称为`Record`。消息头用于存储消息的元数据信息，例如，所在的主题、分区、时间戳等，消息体用于存储真实的消息数据
+-   **`broker`：**`KafKa`集群就是由一个或者多个`KafKa`节点（或称为实例）构成，每一个`KafKa`节点称为`broker`。一个节点就是一台服务器上的`Kafka`服务。`broker`用于数据的接收、存储和发送。`broker`由`Scala`语言实现
+-   **生产者`producer`：**消息的生产者，即向`broker`推送数据的客户端，一般是`Java`代码实现的
+-   **消费者`consumer`**：消息的消费者，即从`broker`中拉取数据的客户端，一般也是`Java`代码实现
+    -   每个消费者都有一个全局唯一的`id`，通过配置项`client.id`指定。在`Java`代码中必须显示指定消费者的消费者组`id`；在命令行中可以不用显示指定，`KafKa`会自动为该消费者生成一个全局唯一的`id`
+
+-   **消费者组`consumer group`：**消费者组由多个消费者构成。消费组是`KafKa`实现对一个主题消息消费的手段，即消费者组是逻辑上的一个订阅者。单独的一个消费者也是主题的订阅者，因为`Kafka`会为单独的一个消费者设置消费者组，即这个消费者组只有这一个消费者
+    -   在`KafKa`中，每个消费者都属于一个特定的消费者组，默认情况下，消费者属于默认的消费组`test-consumer-group`，通过`group.id`配置项，可以为每个消费者指定消费组
+    -   在消费者组内，不同的消费者不能消费同一个主题相同分区的消息，换句话说，一个分区的消息只能由一个消费者消费，原因是进行并行消费，提高效率
 
 ## 1.3、Kafka基本架构
 
@@ -55,11 +57,13 @@
 
 一个完整的`Kafka`集群包含多个生产者，多个`broker`，多个消费者以及一个`zookeeper`集群。
 
--   **`zookeeper`：**`Kafka`通过`zookeeper`协调管理`Kafka`集群，主要用于存储`Kafka`集群的`broker`信息，记录`Kafka`集群由哪些`broker`构成；存储`topic`的分区副本`leader`信息以及分区副本`follower`的信息；此外还用于分区副本`leader`选举过程中的信息协调，以及消费者组中消费者挂掉时，其承担的分区数据消费任务的再分配。在`Kafka 2.8.0`版本之后，搭建`Kafka`集群可以不再依赖`zookeeper`集群。
+-   **`zookeeper`：**`Kafka`通过`zookeeper`协调管理`Kafka`集群，主要用于存储`Kafka`集群的`broker`信息，记录`Kafka`集群由哪些`broker`构成；存储主题的分区副本`leader`信息以及分区副本`follower`的信息；此外还用于分区副本`leader`选举过程中的信息协调，以及消费者组中消费者挂掉时，其承担的分区数据消费任务的再分配。在`Kafka 2.8.0`版本之后，搭建`Kafka`集群可以不再依赖`zookeeper`集群。
 
--   **生产者：**是`Kafka`中的消息生产者，主要用于将外部需要写入`Kafka`的数据进行一定的处理，然后发送给`Kafka`的`broker`进行存储。这些数据在经过处理了后会带有`topic`信息，分区信息，用以确定数据将被法网哪个`topic`的哪个分区中
--   **消费者：**一般所说的消费者，是指消费者组，它是`Kafka`消息消费的逻辑单位。每个消费者都将属于一个消费者组；在同一个消费者组内，不同的消费者只能消费一个`topic`的不同分区
--   **`broker`：**`Kafka`集群中用于存储数据的组件。在`broker`中，用`topic`来对存入`Kafka`的数据进行分类；为了避免由于单一`topic`数据量过大，导致单`broker`节点存储的数据量过大，数据存取效率低下的问题，`Kafka`中可以对每个`topic`的数据进行切分，切出来的每一块数据称为一个分区`Partition`。此外，由于`Kafka`是一个分布式的消息队列，为了提高数据的可靠性，`Kafka`还可以对每个分区设置副本数量，但是，与`Hadoop`等大数据组件不同的是，`Kafka`中，分区副本之间是有所差别的，所有副本中有一个副本将会根据特定的选举机制称为分区副本的`leader`，用于对接生产者和消费者，而其他不是`leader`的副本称为`follower`，在`Kafka`正常运行时，从`leader`中同步数据，时刻与`leader`保持一致，当`leader`挂掉时，再通过选举机制选出一个`follower`成为`leader`
+-   **生产者：**是`Kafka`中的消息生产者，主要用于将外部需要写入`Kafka`的数据进行一定的处理，然后发送给`Kafka`的`broker`进行存储。这些数据在经过处理了后会带有主题信息，分区信息，用以确定数据将被发往哪个主题的哪个分区中
+-   **消费者：**一般所说的消费者，是指消费者组，它是`Kafka`消息消费的逻辑单位。每个消费者都将属于一个消费者组；在同一个消费者组内，不同的消费者只能消费一个主题的不同分区
+-   **`broker`：**`Kafka`集群中用于存储数据的组件。在`broker`中，用主题来对存入`Kafka`的数据进行分类；为了避免由于单一主题数据量过大，导致单`broker`节点存储的数据量过大，数据存取效率低下的问题，`Kafka`中可以对每个主题的数据进行切分，切出来的每一块数据称为一个分区`Partition`。此外，由于`Kafka`是一个分布式的消息队列，为了提高数据的可靠性，`Kafka`还可以对每个分区设置副本数量，但是，与`Hadoop`等大数据组件不同的是，`Kafka`中，分区副本之间是有所差别的，所有副本中有一个副本将会根据特定的选举机制称为分区副本的`leader`，用于对接生产者和消费者，而其他不是`leader`的副本称为`follower`，在`Kafka`正常运行时，从`leader`中同步数据，时刻与`leader`保持一致，当`leader`挂掉时，再通过选举机制选出一个`follower`成为`leader`
+
+**`Kafka`总体工作流程**
 
 ![kafka-基本架构](./05-Kafka.assets/kafka-基本架构.png)
 
@@ -100,25 +104,25 @@
 
     -   **`--bootstrap-server <String: server toconnect to>`：**配置连接`Kafka`集群的主机名和端口号，该配置项必不可少
 
-    -   **`--list`：**列举现有所有`topic`
+    -   **`--list`：**列举现有所有主题
 
-    -   **`--topic <String: topic>`：**指定想要操作的`topic`的名称
+    -   **`--topic <String: topic>`：**指定想要操作的主题的名称
 
-    -   **`--create`：**表明此次对指定`topic`的操作是**创建**该`topic`
+    -   **`--create`：**表明此次对指定主题的操作是**创建**该主题
 
-    -   **`--delete`：**表明此次对指定`topic`的操作是**删除**该`topic`
+    -   **`--delete`：**表明此次对指定主题的操作是**删除**该主题
 
-    -   **`--alter`：**表明此次对指定`topic`的操作是**修改**该`topic`的配置，例如，分区数、副本数等，因此，该参数还需要其他参数配合使用
+    -   **`--alter`：**表明此次对指定主题的操作是**修改**该主题的配置，例如，分区数、副本数等，因此，该参数还需要其他参数配合使用
 
-    -   **`--describe`：**查看`topic`详细描述，分区数、副本数等
+    -   **`--describe`：**查看主题详细描述，分区数、副本数等
 
-    -   **`--patitions<Integer: of partitions>`：**设置`topic`的分区数
+    -   **`--patitions <Integer: of partitions>`：**设置主题的分区数
 
-    -   **`--replication-factor<Integer: replication factor>`：**设置分区副本数
+    -   **`--replication-factor <Integer: replication factor>`：**设置分区副本数
 
-    -   **`--config<String: name = value>`：**更新系统默认配置
+    -   **`--config <String: name = value>`：**更新系统默认配置
 
-        -   **查看当前`Kafka`集群中所有`topic`：**
+        -   **查看当前`Kafka`集群中所有主题：**
 
             ```bash
             kafka-topics.sh --bootstrap-server hadoop132:9092 --list
@@ -129,13 +133,13 @@
             sink_topic
             ```
 
-        -   **创建名为`second`的`topic`：**创建`topic`时，需要指定`topic`的分区数和副本数
+        -   **创建名为`second`的主题：**创建主题时，需要指定主题的分区数和副本数
 
             ```bash
             kafka-topics.sh --bootstrap-server hadoop132:9092 --create --partitions 3 --replication-factor 3 --topic second
             ```
 
-        -   **查看`second topic`的详情：**
+        -   **查看`second`主题的详情：**
 
             ```bash
             kafka-topics.sh --bootstrap-server hadoop132:9092 --describe --topic second
@@ -147,7 +151,7 @@
             	Topic: second	Partition: 2	Leader: 2	Replicas: 2,4,3	Isr: 2,4,3
             ```
 
-        -   **修改`second topic`的分区数：**分区数只能增加，不能减少
+        -   **修改`second`主题的分区数：**分区数只能增加，不能减少
 
             ```bash
             kafka-topics.sh --bootstrap-server hadoop132:9092 --alter --partitions 4 --topic second
@@ -155,7 +159,7 @@
 
             **==分区副本数量的调整需要通过几个步骤，后续会进行说明==**
 
-        -   **再次查看`second topic`的详情：**
+        -   **再次查看`second`主题的详情：**
 
             ```bash
             kafka-topics.sh --bootstrap-server hadoop132:9092 --describe --topic second
@@ -168,33 +172,33 @@
             	Topic: second	Partition: 3	Leader: 3	Replicas: 3,4,2	Isr: 3,4,2
             ```
 
-        -   **删除`second topic`**
+        -   **删除`second`主题**
 
             ```bash
             kafka-topics.sh --bootstrap-server hadoop132:9092 --delete --topic second
             ```
 
-**==生产者相关命令：==生产者的命令行操作只能模拟出一个生产者客户端用于发送消息，因此，相关参数只有配置`Kafka`集群地址和端口号，以及指定需要操作的`topic`。生产者相关命令需要使用`kafka-console-producer.sh`脚本**
+**==生产者相关命令：==生产者的命令行操作只能模拟出一个生产者客户端用于发送消息，因此，相关参数只有配置`Kafka`集群地址和端口号，以及指定需要操作的主题。生产者相关命令需要使用`kafka-console-producer.sh`脚本**
 
--   **创建一个向`first topic`写入数据的生产者：**
+-   **创建一个向`first`主题写入数据的生产者：**
 
     ```bash
     kafka-console-producer.sh --bootstrap-server hadoop132:9092 --topic first
     ```
 
-**==消费者相关命令：==消费者的命令行操作只能模拟出一个消费者客户端（即消费者组）用于消费指定`topic`的消息，因此，相关参数也有配置`Kafka`集群地址和端口号，指定需要操作的`topic`，以及指定消费者组名称。**
+**==消费者相关命令：==消费者的命令行操作只能模拟出一个消费者客户端（即消费者组）用于消费指定主题的消息，因此，相关参数也有配置`Kafka`集群地址和端口号，指定需要操作的主题，以及指定消费者组名称。**
 
 -   **消费者相关命令需要使用`kafka-console-consumer.sh`脚本**
 
     -   **`--bootstrap-server <String: server toconnect to>`：**配置连接`Kafka`集群的主机名和端口号
 
-    -   **`--topic <String: topic>`：**指定想要操作的`topic`的名称
+    -   **`--topic <String: topic>`：**指定想要操作的主题的名称
 
-    -   **`--group<String:consumer group id>`：**指定消费者组名称
+    -   **`--group <String:consumer group id>`：**指定消费者组名称
 
     -   **`--from-beginning`：**从头开始消费数据
 
-        -   **创建一个消费者（组），消费`first topic`的数据**
+        -   **创建一个消费者（组），消费`first`主题的数据**
 
             ```bash
             kafka-console-consumer.sh --bootstrap-server hadoop132:9092 --topic first
@@ -208,19 +212,19 @@
 
 在`Kafka`生产者的逻辑中，`main`线程只关注向哪个分区中发送哪些消息；而`sender`线程只关注与哪个具体的`broker`节点建立连接，并将消息发送到所连接的`broker`中。
 
--   **主线程：**主线程中接受的外部系统数据，会分别经过拦截器、序列化器和分区器的加工，形成带有`topic`以及分区信息的消息，随后这些消息将被缓存到消息累加器中，准备发送到`broker`中
+-   **主线程：**主线程中接受的外部系统数据，会分别经过拦截器、序列化器和分区器的加工，形成带有主题以及分区信息的消息，随后这些消息将被缓存到消息累加器中，准备发送到`broker`中
     -   **拦截器`interceptor`：**生产者拦截器可以在消息发送之前对消息进行定制化操作，如过滤不符合要求数据，修改消息内容，数据统计等
     
     -   **序列化器`serializer`：**数据进行网络传输和硬盘读写都需要进行序列化和反序列化
     
     -   **分区器`partitioner`：**对消息进行分区，便于发送到不同的分区中存储
     -   **消息累加器`RecoderAccumulator`：**①：用于缓存经`main`线程处理好的消息；②：`sender`线程会拉取其中的数据进行批量发送，进而提高效率
-        -   `RecoderAccumulator`的缓存大小默认为`32M`
+        -   `RecoderAccumulator`的缓存大小默认为`32 M`
         -   `RecoderAccumulator`内部为每个分区都维护了一个双端队列，即`Deque<ProduceBatch>`，消息写入缓存时，追加到队列的尾部
-        -   每个双端队列中以批`ProducerBatch`的形式存储消息，默认情况下，`ProducerBatch`的大小为`16K`
-    -   **`ProducerBatch`：**一个消息批次，由多条消息合并而成，默认大小为`16K`，`sender`从`RecoderAccumulator`中读取消息时，以`ProducerBatch`为单位进行读取，进而减少网络请求次数
+        -   每个双端队列中以批`ProducerBatch`的形式存储消息，默认情况下，`ProducerBatch`的大小为`16 K`
+    -   **`ProducerBatch`：**一个消息批次，由多条消息合并而成，默认大小为`16 K`，`sender`从`RecoderAccumulator`中读取消息时，以`ProducerBatch`为单位进行读取，进而减少网络请求次数
 -   **`sender`线程：**`sender`线程从`RecoderAccumulator`中拉取到`RecoderBatch`后，会将`<partition, Deque<Producer Batch>>`形式的消息转换成`<Node,List< ProducerBatch>`形式的消息，即将消息的分区信息转换成对应的`broker`节点，随后，进一步封装成`<Node, Request>`的形式，这样形式的消息具备网络传输的条件。其中`Request`是`Kafka`的协议请求。
-    -   在`sender`线程中有一个用于缓存已经发出去但还没有收到服务端响应的请求的容器`InFlightRequests`。消息具备网络传输条件后，会被保存在`InFlightRequests`中，保存对象的具体形式为`Map<NodeId，Deque<Request>>`，其默认容量为`5`。
+    -   在`sender`线程中有一个用于缓存已经发出去但还没有收到服务端响应的请求的容器`InFlightRequests`。消息具备网络传输条件后，会被保存在`InFlightRequests`中，保存对象的具体形式为`Map<NodeId，Deque<Request>>`，其默认容量为`5`个。
 
 
 **消息发送：**
@@ -389,13 +393,13 @@ public class ProducerConfig extends AbstractConfig {
 
 **发送数据时，异步发送和同步发送、带回调和不带回调的说明：**上面已经对数据同步发送和异步发送做了说明，同步和异步主要是指外部数据系统与生产者内部消息累加器的数据同步和异步，在代码的体现上，同步数据发送需要在异步数据发送代码的基础上，调用`get()`方法即可。
 
-带回调数据发送和不带回调的数据发送方式，是指数据在`main()`线程中进入消息累加器后，由消息累加器返回的数据发送的`topic`以及分区信息，同时，还包括数据进入`broker`的时间。在代码的体现上，带回调数据发送方式需要在不带回调数据发送方式的基础上，在`send()`方法中传入第二个参数：`Callback`，`Callback`是一个接口，声明了一个抽象方法`onCompletion()`，包含两个参数，其中`RecordMetadata`类型参数提供了消息的相关元数据信息；`Exception`类型参数则提供了数据发送过程中的异常信息，如果该参数不为`null`，那么表示有异常出现，数据发送失败。
+带回调数据发送和不带回调的数据发送方式，是指数据在`main()`线程中进入消息累加器后，由消息累加器返回的数据发送的主题以及分区信息，同时，还包括数据进入`broker`的时间。在代码的体现上，带回调数据发送方式需要在不带回调数据发送方式的基础上，在`send()`方法中传入第二个参数：`Callback`，`Callback`是一个接口，声明了一个抽象方法`onCompletion()`，包含两个参数，其中`RecordMetadata`类型参数提供了消息的相关元数据信息；`Exception`类型参数则提供了数据发送过程中的异常信息，如果该参数不为`null`，那么表示有异常出现，数据发送失败。
 
 **关于创建`KafkaProducer`时，定义的泛型的说明：**`Kafka`中的消息都由两部分构成，第一部分是消息头`head`，一般是数据的元数据信息，例如数据发往哪个主题的哪个分区。第二部分是消息体`body`，是消息本身序列化之后的字节数组。消息头和消息体的组织形式是`key-value`，所以，在创建`KafkaProducer`时，指定的两个泛型，分别表示`key`和`value`的类型。
 
 ### 3.2.2 生产者分区
 
-在`Kafka`中，对`topic`进行分区有两方面的好处。在存储方面，将`topic`的每个分区存储在不同的`broker`节点上，通过合理控制分区数据量大小，能够合理使用存储资源；在计算方面，能够提高生产者数据发送的并行度，也能够提高消费者消费数据的并行度。
+在`Kafka`中，对主题进行分区有两方面的好处。在存储方面，将主题的每个分区存储在不同的`broker`节点上，通过合理控制分区数据量大小，能够合理使用存储资源；在计算方面，能够提高生产者数据发送的并行度，也能够提高消费者消费数据的并行度。
 
 **生产者默认分区策略：**
 
@@ -509,7 +513,7 @@ public class Demo02_CustomerPartitioner implements Partitioner {
 
 -   **`buffer.memory`：**`RecoderAccumulator`的大小，默认`32 M`
 -   **`batch.size`：**`RecoderAccumulator`中，数据批次`ProducerBatch`的大小，默认值为`16 K`
--   **`linger.ms`：**`sender`线程从`RecoderAccumulator`中，读取`ProducerBatch`数据的时间间隔，默认值`0 ms`。也就是说，默认情况下，每有一条数据写入到`RecoderAccumulator`的`ProducerBatch`中，就会立刻被`sender`线程读取，并被发送给`broker`。当该配置项是默认值时，`batch.size`配置项相当于没有起作用。生产环境中，该配置项一般配置为`5-100 ms`
+-   **`linger.ms`：**`sender`线程从`RecoderAccumulator`中，读取`ProducerBatch`数据的时间间隔，默认值`0 ms`。也就是说，默认情况下，每有一条数据写入到`RecoderAccumulator`的`ProducerBatch`中，就会立刻被`sender`线程读取，并被发送给`broker`。当该配置项是默认值时，`batch.size`配置项相当于没有起作用。生产环境中，该配置项一般配置为`5 ~ 100 ms`
 
 **使用数据压缩，减少数据传输量，也能够提高数据吞吐量，相应配置参数为：**
 
@@ -762,7 +766,7 @@ public class Demo03_ProducerTransaction {
 `zookeeper`在`Kafka`中的作用：
 
 -   `broker`节点注册信息
--   `topics`注册信息
+-   主题注册信息
 -   `leader`选举和`follower`信息同步管理，中央控制器注册信息
 -   生产者负载均衡
 -   消费者负载均衡
@@ -772,7 +776,7 @@ public class Demo03_ProducerTransaction {
 
 ## 4.2、broker启动流程
 
-`broker`是`Kafka`集群中，用于存储数据的模块，每个主题都有`1`个至多个分区，每个分区也有一定数量的副本，不同于`Hadoop`中，数据存储副本是同一级别的，`Kafka`中，每个主题的分区副本有`leader`和`follower`之分，生产者和消费者都将与`leader`进行数据交互。因此，`broker`的启动最主要的问题在于如何选举产生leader`，`而在其运行时，最主要的问题在于当`leader`和`follower`宕机时该如何处理。
+`broker`是`Kafka`集群中，用于存储数据的模块，每个主题都有`1`个至多个分区，每个分区也有一定数量的副本，不同于`Hadoop`中，数据存储副本是同一级别的，`Kafka`中，每个主题的分区副本有`leader`和`follower`之分，生产者和消费者都将与`leader`进行数据交互。因此，`broker`的启动最主要的问题在于如何选举产生`leader`，而在其运行时，最主要的问题在于当`leader`和`follower`宕机时该如何处理。
 
 **`broker`启动流程：**
 
@@ -785,6 +789,8 @@ public class Demo03_ProducerTransaction {
 -   至此，`Kafka broker`集群的首次启动完成，第一次分区副本`leader`选举完成
 
 >   对于非第一次启动，由于`zookeeper`的节点中存储着各个分区副本的信息，因此非第一次启动分区副本的`leader`不会发生变化，但是由于`center controller`在`zookeeper`中是抢占式注册，所以每一次启动`Kafka`集群，`leader controller`都会不同。
+
+**`broker`初始化流程**
 
 ![Kafka-broker启动流程](./05-Kafka.assets/Kafka-broker启动流程.png)
 
@@ -820,7 +826,7 @@ public class Demo03_ProducerTransaction {
 
 -   **`topic`：**主题，`Kafka`中数据管理的逻辑单元，并不实际存储数据，类似数据库管理系统中的库和表
 
--   **`partition`：**分区，`topic`物理上的分组，一个`topic`能够分为多个`partition`，每一个`partition`是一个有序的队列
+-   **`partition`：**分区，主题物理上的分组，一个主题能够分为多个`partition`，每一个`partition`是一个有序的队列
 -   **`segment`：**分片，`partition`物理上的进一步细分，一个`partition`由多个`segment`组成
 -   **`offset`**：偏移量。每个`partition`都由一系列有序的、不可变的消息组成，每条消息都用一个连续的序列号维护，用于标识该消息在`partition`中的位置
 
@@ -959,7 +965,7 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 -   `leader.imbalance.per.broker.percentage`：当`broker`集群的不平衡率达到`10%`时，重新选举`leader`，更换以前的`leader`。默认值`10%`
     -   需要说明的是，频繁地更换`leader`会产生很多不必要的性能开销，而不开启`leader`重选举可能造成一些问题
 -   `leader.imbalance.check.interval.seconds`：检查`broker`集群的不平衡率的时间间隔，默认值`300 s`
--   `log.segment.bytes`：`segment`文件大小配置项，默认值`1G`
+-   `log.segment.bytes`：`segment`文件大小配置项，默认值`1 G`
 -   `log.index.interval.bytes`：`.index`文件中稀疏索引的稀疏度，默认值`4 K`
 -   `log.retention.hours`：`log`数据保存时长，默认值`7`天
 -   `log.retention.check.interval.ms`：检查数据保存时间是否超时，默认值`5 min`
@@ -983,11 +989,13 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 
 消费者组初始化需要确定哪些消费者构成一个消费者组，以及消费者组中消费者消费分区数据的计划。这两项工作，需要一个协调者`Coordinator`来协助进行。
 
-`Coordinator`一般指的是运行在`broker`上的`group Coordinator`，用于管理消费者组中各个消费者，每个`broker`上都有一个`Coordinator`实例，管理多个消费者组，主要用于`offset`位移管理和`Consumer Rebalance`。
+`Coordinator`一般指的是运行在`broker`上的`group Coordinator`，用于管理消费者组中各个消费者，每个`broker`上都有一个`Coordinator`实例，管理多个消费者组，主要用于`offset`偏移量管理和消费者组再平衡。
 
 -   `coordinator`的确定：消费者组组`ID`的`hashcode`对系统主题`_consumer_offsets`分区数取余，得到的值所对应的`_consumer_offsets`的分区副本，在哪个`broker`节点上，该节点上的`coordinator`则用于管理该消费者组
 -   消费者组`leader`确定：具有相同消费者组`ID`的消费者会在`coordinator`确定后，将消费请求发送给`coordinator`，`coordinator`收到所有消费者的信息后，会在这些消费者中随机选择一个消费者作为消费者`leader`，并将所要消费的主题信息发送给`leader`，随后，`leader`将制定主题的消费方案，并将消费方案再发送给`coordinator`，`coordinator`随后会将消费方案分发给消费者组中的每一个消费者，消费者接收到消费方案，就会开始数据消费
 -   正常情况下，消费者会与`coordinator`保持心跳，每隔`3 s`产生一次通信。当消费者出现`45 s`内没有保持心跳时，`coordinator`会认为该消费者挂了，会将其移除当前消费者组。此时，该消费者所对应的分区数据，会由其他消费者进行消费，即出现再平衡，这个工作也是`coordinator`来处理。除此之外，当消费者消费分区数据所用时间超过`5 min`，该参数为`Kafka`默认值，也会出现再平衡
+
+**消费者组初始化流程**
 
 ![Kafka-消费者组初始化流程](./05-Kafka.assets/Kafka-消费者组初始化流程.png)
 
@@ -1005,6 +1013,8 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
     -   随后，经过拦截器处理
     -   最后就形成了正常的数据
 -   最后，消费者本身去队列里拉取数据，通过配置参数`max.poll.records`来控制一次拉取数据的最大条数，默认值为`500`
+
+**消费者数据消费流程**
 
 ![kafka-消费者数据消费流程](./05-Kafka.assets/kafka-消费者数据消费流程.png)
 
@@ -1106,6 +1116,8 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 
 手动提交`offset`分为同步提交和异步提交，两者的相同点是，都会将本次提交的一批数据最高的偏移量提交；不同点是，同步提交阻塞当前线程，一直到提交成功，并且会自动失败重试（由不可控因素导致，也会出现提交失败）；而异步提交则没有失败重试机制，故有可能提交失败。
 
+这里所说的同步和异步，指的是消费者消费数据和消费者提交`offset`的过程。同步提交时，消费者必须等待`offset`提交成功才会提交会继续消费数据；异步提交时，消费者提交了`offset`就可以继续进行数据消费，不需要等待`offset`提交成功。
+
 ### 5.3.3 指定offset进行数据消费
 
 配置参数：`auto.offset.reset = earliest | latest | none`
@@ -1113,6 +1125,10 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 -   `earliest`：自动将偏移量重置为最早的偏移量，即从头开始消费
 -   `latest`（默认值）：自动将偏移量重置为最新偏移量
 -   `none`：如果未找到消费者组的先前偏移量，则向消费者抛出异常
+
+以上参数在代码中可以通过`ConsumerConfig`进行直接配置，如果需要任意指定位置进行数据消费，那么需要通过消费者客户端`KafkaConsumer`调用`seek()`方法进行设置。需要注意的是，在指定`offset`进行消费之前，需要先获取每个消费者消费的分区信息，然后才能对每个分区进行`offset`指定，然而由于代码是从上到下直接运行的，有可能在获取分区时，消费者的分区分配还没有执行完，因此获取不到信息，所以，一般都需要进行一定的条件判断。
+
+代码演示看**`5.4` 消费者`API`**
 
 ### 5.3.4 指定时间消费
 
@@ -1127,6 +1143,492 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 **解决消息的重复消费和漏消费，需要将消息的消费过程和`offset`的提交过程整合成一个事务。**
 
 ## 5.4 消费者API
+
+### 5.4.1 消费者数据消费
+
+**常见的数据消费方式：订阅一个或多个主题；订阅主题的指定分区**
+
+```Java
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.StringDeserializer;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Properties;
+
+/**
+ * Author: shaco
+ * Date: 2023/5/27
+ * Desc: 消费者消费数据
+ */
+public class Demo04_PollMessage {
+    public static void main(String[] args) {
+        // 0、消费者配置
+        Properties prop = new Properties();
+
+        // 配置Kafka集群连接地址，必选项
+        prop.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,"hadoop132:9092");
+
+        // 配置key和value的反序列化器，必选项
+        prop.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        prop.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class.getName());
+
+        // TODO 配置消费者组名，必选项
+        prop.put(ConsumerConfig.GROUP_ID_CONFIG,"test");
+
+        // 1、创建一个消费者
+        KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(prop);
+
+        // TODO 2、订阅消费的主题，可以一次订阅一个主题，也可以一次订阅多个主题
+        // 该方式将消费订阅的主题的所有分区的数据
+        ArrayList<String> subscribeTopics = new ArrayList<>();
+        subscribeTopics.add("first");
+        kafkaConsumer.subscribe(subscribeTopics);
+
+        // TODO 2、订阅某个主题或某几个主题的指定的分区
+        // 订阅first主题的0号分区
+        // ArrayList<TopicPartition> topicCollections = new ArrayList<>();
+        // topicCollections.add(new TopicPartition("first",0));
+        // kafkaConsumer.assign(topicCollections);
+
+        // 3、消费数据：当消费到"stop"时，停止消费
+        boolean isflag = true;
+        while (isflag){
+            // 每隔一秒进行一次拉取
+            ConsumerRecords<String, String> consumerRecords = kafkaConsumer.poll(Duration.ofSeconds(1));
+
+            // 将消费到的数据打印在控制台上
+            // 判断消费到的数据有没有stop
+            for (ConsumerRecord<String, String> consumerRecord : consumerRecords) {
+                if ("stop".equals(consumerRecord.value())){
+                    isflag = false;
+                }
+
+                System.out.println(consumerRecord);
+            }
+        }
+    }
+}
+```
+
+**手动提交`offset`和自动提交`offset`**
+
+```Java
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Properties;
+
+/**
+ * Author: shaco
+ * Date: 2023/5/27
+ * Desc: 手动提交offset，自动提交offset
+ */
+public class Demo05_CommitOffset {
+    public static void main(String[] args) {
+        // 0、消费者配置
+        Properties prop = new Properties();
+
+        // 配置Kafka集群连接地址，必选项
+        prop.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,"hadoop132:9092");
+
+        // 配置key和value的反序列化器，必选项
+        prop.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        prop.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class.getName());
+
+        // TODO 配置消费者组名，必选项
+        prop.put(ConsumerConfig.GROUP_ID_CONFIG,"test");
+
+        // TODO 设置手动提交offset，每消费一批数据，提交一次offset。默认值是true，表示自动提交offset
+        prop.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,"false");
+
+        // 1、创建一个消费者
+        KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(prop);
+
+        // TODO 2、订阅消费的主题，可以一次订阅一个主题，也可以一次订阅多个主题
+        // 该方式将消费订阅的主题的所有分区的数据
+        ArrayList<String> subscribeTopics = new ArrayList<>();
+        subscribeTopics.add("first");
+        kafkaConsumer.subscribe(subscribeTopics);
+
+        // 3、消费数据：当消费到"stop"时，停止消费
+        boolean isflag = true;
+        while (isflag){
+            // 每隔一秒进行一次拉取
+            ConsumerRecords<String, String> consumerRecords = kafkaConsumer.poll(Duration.ofSeconds(1));
+
+            // 将消费到的数据打印在控制台上
+            // 判断消费到的数据有没有stop
+            for (ConsumerRecord<String, String> consumerRecord : consumerRecords) {
+                if ("stop".equals(consumerRecord.value())){
+                    isflag = false;
+                }
+
+                System.out.println(consumerRecord);
+            }
+
+            // TODO 手动提交offset
+            // 异步提交offset
+            kafkaConsumer.commitAsync();
+            // 同步提交offset
+            // kafkaConsumer.commitSync();
+        }
+    }
+}
+```
+
+**指定`offset`位置消费**
+
+```java
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.StringDeserializer;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Properties;
+import java.util.Set;
+
+/**
+ * Author: shaco
+ * Date: 2023/5/27
+ * Desc: 指定offset或指定时间进行数据消费
+ */
+public class Demo06_AssignOffset {
+    public static void main(String[] args) {
+// 0、消费者配置
+        Properties prop = new Properties();
+
+        // 配置Kafka集群连接地址，必选项
+        prop.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,"hadoop132:9092");
+
+        // 配置key和value的反序列化器，必选项
+        prop.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        prop.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class.getName());
+
+        // TODO 配置消费者组名，必选项
+        prop.put(ConsumerConfig.GROUP_ID_CONFIG,"test");
+
+        // 1、创建一个消费者
+        KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(prop);
+
+        // TODO 2、订阅消费的主题，可以一次订阅一个主题，也可以一次订阅多个主题
+        // 该方式将消费订阅的主题的所有分区的数据
+        ArrayList<String> subscribeTopics = new ArrayList<>();
+        subscribeTopics.add("first");
+        kafkaConsumer.subscribe(subscribeTopics);
+
+        // TODO 指定offset进行数据消费
+        // 创建一个集合用来存储消费者消费的分区
+        Set<TopicPartition> topicPartitions = new HashSet<>();
+
+        // 由于消费者组初始化流程较为繁复，有可能代码执行到这里，Kafka集群中，消费者组还没有初始化完成，消费者分区分配策略还没能执行完成，所以需要进行逻辑判断
+        while (topicPartitions.size() == 0){
+            // 如果不能获取到消费者所消费的分区，那么一直进分区获取，并判断
+            topicPartitions = kafkaConsumer.assignment();
+        }
+
+        // 为每个分区指定offset的消费位置，每个分区都从100的位置开始消费
+        for (TopicPartition topicPartition : topicPartitions) {
+            kafkaConsumer.seek(topicPartition, 100);
+        }
+
+        // 3、消费数据：当消费到"stop"时，停止消费
+        boolean isflag = true;
+        while (isflag){
+            // 每隔一秒进行一次拉取
+            ConsumerRecords<String, String> consumerRecords = kafkaConsumer.poll(Duration.ofSeconds(1));
+
+            // 将消费到的数据打印在控制台上
+            // 判断消费到的数据有没有stop
+            for (ConsumerRecord<String, String> consumerRecord : consumerRecords) {
+                if ("stop".equals(consumerRecord.value())){
+                    isflag = false;
+                }
+
+                System.out.println(consumerRecord);
+            }
+        }
+    }
+}
+```
+
+**指定时间进行消费**
+
+```java
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.StringDeserializer;
+
+import java.time.Duration;
+import java.util.*;
+
+/**
+ * Author: shaco
+ * Date: 2023/5/27
+ * Desc: 指定时间进行消费
+ */
+public class Demo07_AssignTimestamp {
+    public static void main(String[] args) {
+        // 0、消费者配置
+        Properties prop = new Properties();
+
+        // 配置Kafka集群连接地址，必选项
+        prop.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG,"hadoop132:9092");
+
+        // 配置key和value的反序列化器，必选项
+        prop.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        prop.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,StringDeserializer.class.getName());
+
+        // TODO 配置消费者组名，必选项
+        prop.put(ConsumerConfig.GROUP_ID_CONFIG,"test");
+
+        // 1、创建一个消费者
+        KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(prop);
+
+        // TODO 2、订阅消费的主题，可以一次订阅一个主题，也可以一次订阅多个主题
+        // 该方式将消费订阅的主题的所有分区的数据
+        ArrayList<String> subscribeTopics = new ArrayList<>();
+        subscribeTopics.add("first");
+        kafkaConsumer.subscribe(subscribeTopics);
+
+        // TODO 指定时间戳进行数据消费，需要将时间戳转换成offset
+        // 创建一个集合用来存储消费者消费的分区
+        Set<TopicPartition> topicPartitions = new HashSet<>();
+
+        // 由于消费者组初始化流程较为繁复，有可能代码执行到这里，Kafka集群中，消费者组还没有初始化完成，消费者分区分配策略还没能执行完成，所以需要进行逻辑判断
+        while (topicPartitions.size() == 0){
+            // 如果不能获取到消费者所消费的分区，那么一直进分区获取，并判断
+            topicPartitions = kafkaConsumer.assignment();
+        }
+
+        // TODO 对每个获取到的分区指定时间戳，即指定每个分区应该从哪个时间戳开始进行消费
+        // 指定每个分区从1天前开始消费数据
+        // 需要创建一个Map集合
+        HashMap<TopicPartition, Long> topicPartitionLongHashMap = new HashMap<>();
+        for (TopicPartition topicPartition : topicPartitions) {
+            topicPartitionLongHashMap.put(topicPartition, System.currentTimeMillis() - 24 * 60 * 60 * 1000L);
+        }
+
+        // TODO 将时间戳转换成offset
+        Map<TopicPartition, OffsetAndTimestamp> topicPartitionOffsetAndTimestampMap = kafkaConsumer.offsetsForTimes(topicPartitionLongHashMap);
+
+        // TODO 指定每个分区的消费位置，将时间戳转换成的offset传进去
+        for (TopicPartition topicPartition : topicPartitions) {
+            // 获取该分区的时间戳偏移量对象
+            OffsetAndTimestamp offsetAndTimestamp = topicPartitionOffsetAndTimestampMap.get(topicPartition);
+            // 获取该时间戳对应的偏移量
+            long offset = offsetAndTimestamp.offset();
+
+            // 指定分区的消费offset
+            kafkaConsumer.seek(topicPartition, offset);
+        }
+
+        // 3、消费数据：当消费到"stop"时，停止消费
+        boolean isflag = true;
+        while (isflag){
+            // 每隔一秒进行一次拉取
+            ConsumerRecords<String, String> consumerRecords = kafkaConsumer.poll(Duration.ofSeconds(1));
+
+            // 将消费到的数据打印在控制台上
+            // 判断消费到的数据有没有stop
+            for (ConsumerRecord<String, String> consumerRecord : consumerRecords) {
+                if ("stop".equals(consumerRecord.value())){
+                    isflag = false;
+                }
+
+                System.out.println(consumerRecord);
+            }
+        }
+    }
+}
+```
+
+### 5.4.2 消费者常用类
+
+**`ConsumerCongif`类中的常用参数**
+
+```java
+public class ConsumerConfig extends AbstractConfig {
+    private static final ConfigDef CONFIG;
+
+    // 配置消费者组id
+    public static final String GROUP_ID_CONFIG = CommonClientConfigs.GROUP_ID_CONFIG;
+
+    // 配置消费者一次拉取消息过程中，最多拉取多少条数据
+    public static final String MAX_POLL_RECORDS_CONFIG = "max.poll.records";
+
+    // 配置消费者两次拉取数据的最大时间间隔
+    public static final String MAX_POLL_INTERVAL_MS_CONFIG = CommonClientConfigs.MAX_POLL_INTERVAL_MS_CONFIG;
+
+    // 配置消费者与coordinator会话的超时时间，默认值是45000毫秒
+    public static final String SESSION_TIMEOUT_MS_CONFIG = CommonClientConfigs.SESSION_TIMEOUT_MS_CONFIG;
+
+    // 消费者与coordinator心跳的时间间隔，默认值3000毫秒
+    public static final String HEARTBEAT_INTERVAL_MS_CONFIG = CommonClientConfigs.HEARTBEAT_INTERVAL_MS_CONFIG;
+
+    // 配置Kafka集群连接地址
+    public static final String BOOTSTRAP_SERVERS_CONFIG = CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG;
+
+    // 是否进行offset自动提交，默认值是true，表示默认自动提交
+    public static final String ENABLE_AUTO_COMMIT_CONFIG = "enable.auto.commit";
+
+    // 自动提交的时间间隔，即每隔多长时间提交一次offset，默认值5000毫秒
+    public static final String AUTO_COMMIT_INTERVAL_MS_CONFIG = "auto.commit.interval.ms";
+
+    // 配置消费者分区分配策略，默认值是："org.apache.kafka.clients.consumer.ConsumerPartitionAssignor"，表示：粘性分区 + Range
+    /*
+        可用分区分配策略有：
+            Range：org.apache.kafka.clients.consumer.RangeAssignor
+            RoundRobin：org.apache.kafka.clients.consumer.RoundRobinAssignor
+            Sticky：org.apache.kafka.clients.consumer.StickyAssignor
+            CooperativeSticky：org.apache.kafka.clients.consumer.CooperativeStickyAssignor
+    */
+    public static final String PARTITION_ASSIGNMENT_STRATEGY_CONFIG = "partition.assignment.strategy";
+
+    // 消费者网络连接客户端向broker拉取数据时，一次最少拉取的数据量是多少，默认值：1 byte
+    public static final String FETCH_MIN_BYTES_CONFIG = "fetch.min.bytes";
+
+    // 消费者网络连接客户端向broker拉取数据时，一次最多拉取的数据量是多少，默认值：50 * 1024 * 1024 byte
+    public static final String FETCH_MAX_BYTES_CONFIG = "fetch.max.bytes";
+    public static final int DEFAULT_FETCH_MAX_BYTES = 50 * 1024 * 1024;
+
+    // 消费者网络连接客户端向broker拉取数据时，每批次数据攒批的最长等待时间，默认值：500毫秒
+    public static final String FETCH_MAX_WAIT_MS_CONFIG = "fetch.max.wait.ms";
+
+    // key的反序列化方式
+    public static final String KEY_DESERIALIZER_CLASS_CONFIG = "key.deserializer";
+
+    // value的反序列化方式
+    public static final String VALUE_DESERIALIZER_CLASS_CONFIG = "value.deserializer";
+
+    // 配置拦截器
+    public static final String INTERCEPTOR_CLASSES_CONFIG = "interceptor.classes";
+
+    // 消费者消息消费的隔离级别
+    public static final String ISOLATION_LEVEL_CONFIG = "isolation.level";
+    // 默认的隔离级别
+    public static final String DEFAULT_ISOLATION_LEVEL = IsolationLevel.READ_UNCOMMITTED.toString().toLowerCase(Locale.ROOT);
+
+    // 指定从什么地方开始消费数据
+    // earliest：从最开始的地方消费，相当于--from-begining
+    // latest：默认值，从最新的地方开始消费，主题中已有的数据不消费，再来新的数据就消费
+    // none：如果没有找到相应的offset，抛出异常
+    public static final String AUTO_OFFSET_RESET_CONFIG = "auto.offset.reset";
+
+}
+```
+
+**消费者消费到的消息`ConsumerRecord`**
+
+每个`ConsumerRecord`就代表一条消息，每次消费消息都会附带将消息的元数据信息，例如消息属于哪个主题、哪个分区等。消费者一次消费会拉取一批数据`ConsumerRecords`，里面有多条消息`ConsumerRecord`。
+
+**`ConsumerRecord`类常用方法**
+
+```Java
+public class ConsumerRecord<K, V> {
+    public static final long NO_TIMESTAMP = RecordBatch.NO_TIMESTAMP;
+    public static final int NULL_SIZE = -1;
+
+    public ConsumerRecord(String topic,
+                          int partition,
+                          long offset,
+                          K key,
+                          V value) {
+        this(topic, partition, offset, NO_TIMESTAMP, TimestampType.NO_TIMESTAMP_TYPE, NULL_SIZE, NULL_SIZE, key, value,
+            new RecordHeaders(), Optional.empty());
+    }
+
+    public ConsumerRecord(String topic,
+                          int partition,
+                          long offset,
+                          long timestamp,
+                          TimestampType timestampType,
+                          int serializedKeySize,
+                          int serializedValueSize,
+                          K key,
+                          V value,
+                          Headers headers,
+                          Optional<Integer> leaderEpoch) {
+        if (topic == null)
+            throw new IllegalArgumentException("Topic cannot be null");
+        if (headers == null)
+            throw new IllegalArgumentException("Headers cannot be null");
+
+        this.topic = topic;
+        this.partition = partition;
+        this.offset = offset;
+        this.timestamp = timestamp;
+        this.timestampType = timestampType;
+        this.serializedKeySize = serializedKeySize;
+        this.serializedValueSize = serializedValueSize;
+        this.key = key;
+        this.value = value;
+        this.headers = headers;
+        this.leaderEpoch = leaderEpoch;
+    }
+
+    // 返回消息所在的主题
+    public String topic() { return this.topic; }
+
+    // 返回消息是哪个分区的
+    public int partition() { return this.partition; }
+
+    // 返回消息头header，该值不会为null。消息头中存放着消息的元数据信息
+    public Headers headers() { return headers; }
+
+    // 返回消息的key，可以为null
+    public K key() { return key; }
+
+    // 返回消息本身
+    public V value() { return value; }
+
+    // 返回消息在Kafka分区中的offset
+    public long offset() { return offset; }
+
+    // 返回该消息在的时间戳，是进入Kafka的时间戳
+    public long timestamp() { return timestamp; }
+
+    // 返回该消息时间戳的时间类型
+    public TimestampType timestampType() { return timestampType; }
+
+    // 返回key序列化之后的字节数，如果key为null，那么返回值为-1
+    public int serializedKeySize() { return this.serializedKeySize; }
+
+    // 返回value序列化之后的字节数，如果key为null，那么返回值为-1
+    public int serializedValueSize() { return this.serializedValueSize; }
+
+    public Optional<Integer> leaderEpoch() {
+        return leaderEpoch;
+    }
+
+    @Override
+    public String toString() {
+        return "ConsumerRecord(topic = " + topic
+               + ", partition = " + partition
+               + ", leaderEpoch = " + leaderEpoch.orElse(null)
+               + ", offset = " + offset
+               + ", " + timestampType + " = " + timestamp
+               + ", serialized key size = "  + serializedKeySize
+               + ", serialized value size = " + serializedValueSize
+               + ", headers = " + headers
+               + ", key = " + key
+               + ", value = " + value + ")";
+    }
+}
+```
 
 ## 5.5 消费者常用配置参数
 
@@ -1157,3 +1659,5 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 
 -   解决消息生产速度过快：增加主题的分区数量，同时增加消费者的数量，以提升消息的并行度
 -   解决消息消费速度过慢：合理设置消费者配置参数，如，一批次数据量大小，数据条数等
+
+# 六、Kafka监控
