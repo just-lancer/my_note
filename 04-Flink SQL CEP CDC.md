@@ -78,7 +78,7 @@ EnvironmentSettings build = EnvironmentSettings.newInstance()
         .build();
 ```
 
-区别与`TableEnvironment`可以创建具有不同的执行模式和不同计划器的表执行环境，`StreamTableTableEnvironment`只能创建基于新版`Blink`计划器的流式执行环境，其创建方式与`TableEnvironment`创建表执行环境相同，都是调用其静态方法`create()`，传入`EnvironmentSettings`类型的参数即可。
+区别于`TableEnvironment`可以创建具有不同的执行模式和不同计划器的表执行环境，`StreamTableTableEnvironment`只能创建基于新版`Blink`计划器的流式执行环境，其创建方式与`TableEnvironment`创建表执行环境相同，都是调用其静态方法`create()`，传入`EnvironmentSettings`类型的参数即可。
 
 除此之外，`StreamTableEnvironment`还能基于流式执行环境`StreamExecutionEnvironment`创建表执行环境。
 
@@ -118,36 +118,36 @@ public class C029_CreateTableExecutionEnvironment {
 
 表是关系型数据库中数据存储的基本形式，也是`SQL`执行的基本对象。`Flink`中表的概念也并不特殊，是由多个行`Row`数据构成，每个行又具有定义好的多个列。因此表就是固定类型的数据构成的二维矩阵。
 
-在`Flink`中，为了对表进行管理，表环境中会维护一个`Catalog`，所有的表都是通过`Catalog`来进行注册创建的。表在环境中有唯一的`ID`，由三部分构成：`Catalog`名、数据库名、以及表明。默认情况下，`Catalog`名为`default_catalog`，数据库名为`default_database`，所以如果创建一个名为`test_tb`的表，那么它的`ID`为`default_catalog.default_database.test_tb`。
+在`Flink`中，为了对表进行管理，表环境中会维护一个`Catalog`，所有的表都是通过`Catalog`来进行注册创建的。表在环境中有唯一的`ID`，由三部分构成：`Catalog`名、数据库名、以及表名。默认情况下，`Catalog`名为`default_catalog`，数据库名为`default_database`，所以如果创建一个名为`test_tb`的表，那么它的`ID`为`default_catalog.default_database.test_tb`。
 
 具体表的创建有两种方式。
 
-**通过连接器在表执行环境中注册表：**
+-   **通过连接器在表执行环境中注册表：**
 
-通过连接器连接到外部系统，然后定义出对应的表结构，是最为直接的创建表的方式。当在表执行环境中读取定义好的表时，连接器就会从外部系统读取数据，并进行转换；而当向定义好的表中写入数据时，连接器也会将数据输出到外部系统中。
+    通过连接器连接到外部系统，然后定义出对应的表结构，是最为直接的创建表的方式。当在表执行环境中读取定义好的表时，连接器就会从外部系统读取数据，并进行转换；而当向定义好的表中写入数据时，连接器也会将数据输出到外部系统中。
 
-在实际的代码操作中，需要使用表执行环境对象`tableEnv`调用`executeSql()`方法，传入字符串类型的表的`DDL`语句作为参数，就能在表环境中创建表。需要注意的是，区别于离线`SQL`的`DDL`，在`Flink`实时`SQL`中，其`DDL`语言中还需要通过`WITH`关键字指定连接到外部系统的连接器。
+    在实际的代码操作中，需要使用表执行环境对象`tableEnv`调用`executeSql()`方法，传入字符串类型的表的`DDL`语句作为参数，就能在表环境中创建表。需要注意的是，区别于离线`SQL`的`DDL`，在`Flink`实时`SQL`中，其`DDL`语言中还需要通过`WITH`关键字指定连接到外部系统的连接器。
 
-**通过连接器创建一张名为`test_tb1`的表：**
+    **通过连接器创建一张名为`test_tb1`的表：**
 
-```java 
-tableEnv.executeSql("create table test_tb1 ... with ('connector' = ...)")
-```
+    ```Java
+    tableEnv.executeSql("create table test_tb1 ... with ('connector' = ...)")
+    ```
 
-上述申明，没有定义`Catalog`和`Database`，因此取值都是默认的，表的完整`id`是：`default_catalog.default_database.test_tb1`。
+    上述声明，没有定义`Catalog`和`Database`，因此取值都是默认的，表的完整`id`是：`default_catalog.default_database.test_tb1`。
 
-如果需要使用自定义的`Catalog`名和数据库名，可以在表执行环境中调用相应的方法，设置`Catalog`名和数据库名。设置后，在表环境中创建的所有表，其`Catalog`名和数据库名都将变成开发者设置的名称。
+    如果需要使用自定义的`Catalog`名和数据库名，可以在表执行环境中调用相应的方法，设置`Catalog`名和数据库名。设置后，在表环境中创建的所有表，其`Catalog`名和数据库名都将变成开发者设置的名称。
 
-```java 
-tableEnv.useCatalog("custom_catalog");
-tableEnv.useDatabase("custome_database");
-```
+    ```Java
+    tableEnv.useCatalog("custom_catalog");
+    tableEnv.useDatabase("custome_database");
+    ```
 
-**使用虚拟表向表环境中注册表：**
+-   **使用虚拟表向表环境中注册表：**
 
-通过连接器的方式在表执行环境中注册表之后，就可以直接将表名用于`SQL`语句中，但执行`SQL`得到的结果是`Table`类型，是`Java`中的一个类，如果想要在后续直接使用得到的`Table`，那么就需要在表执行环境中注册这张表。
+    通过连接器的方式在表执行环境中注册表之后，就可以直接将表名用于`SQL`语句中，但执行`SQL`得到的结果是`Table`类型，是`Java`中的一个类，如果想要在后续直接使用得到的`Table`，那么就需要在表执行环境中注册这张表。
 
-使用表执行环境`tableEnv`调用`createTemporaryView()`方法，将字符串类型的需要注册的表名和`Table`类型的实例，作为参数传入，便可以在后续的`SQL`中直接使用。
+    使用表执行环境`tableEnv`调用`createTemporaryView()`方法，将字符串类型的需要注册的表名和`Table`类型的实例，作为参数传入，即可在表执行环境注册这张表，随后，便可以在后续的`SQL`中直接使用。
 
 表的注册其实质是创建了一个虚拟表，与`SQL`语法中的视图非常相似，这张虚拟表并不会直接保存数据，只会在用到这张表的时候，会将其对应的查询语句嵌入到`SQL`中。
 
