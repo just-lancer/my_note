@@ -5710,10 +5710,10 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
 >   **开启了检查点之后，许多的检查点设置都可以通过检查点配置对象`CheckpointConfig`来进行配置，获取检查点配置对象通过流执行环境调用`getCheckpointConfig()`方法获得：**
 >
 >   ```java
->   CheckpointConfig checkpointConfig = env.getCheckpointConfig();
+>   CheckpointConfig envCheckpointConfig = env.getCheckpointConfig();
 >   ```
 
--   **设置检查点保存路径：`Flink`提供了两种检查点保存类型，一种是堆内存，另一种是文档文件系统。默认情况下，Flink将检查点保存在`JobManager`的堆内存中。而在生产环境中，检查点一般保存在文件系统中。配置检查点存储路径，使用流执行环境对象调用`setCheckpointStorage()`方法，传入一个`CheckpointStorage`类型的参数，`CheckpointStorage`是一个枚举类**
+-   **设置检查点保存路径：`Flink`提供了两种检查点保存类型，一种是堆内存，另一种是文档文件系统。默认情况下，`Flink`将检查点保存在`JobManager`的堆内存中。而在生产环境中，检查点一般保存在文件系统中。配置检查点存储路径，使用流执行环境对象调用`setCheckpointStorage()`方法，传入一个`CheckpointStorage`类型的参数，`CheckpointStorage`是一个枚举类**
 
     -   **将检查点保存到`JobManager`堆内存中：**
 
@@ -5721,7 +5721,7 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
         checkpointConfig.setCheckpointStorage(new JobManagerCheckpointStorage());
         ```
 
-    -   **将加差点保存到外部文件系统中：**
+    -   **将检查点保存到外部文件系统中：**
 
         ```Java
         checkpointConfig.setCheckpointStorage(new FileSystemCheckpointStorage("hdfs://hadoop132:9820/`Flink`/checkpoint"));
@@ -5736,7 +5736,7 @@ public interface CoGroupFunction<IN1, IN2, O> extends Function, Serializable {
     envCheckpointConfig.setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
     ```
 
--   **设置检查点超时时间：Flink进行检查点需要花费时间，该配置项用于配置进行检查点保存所花费的最大时间，超出该时间，检查点保存还未完成，默认情况下，Flink将丢弃该检查点**
+-   **设置检查点超时时间：`Flink`进行检查点需要花费时间，该配置项用于配置进行检查点保存所花费的最大时间，超出该时间，检查点保存还未完成，默认情况下，Flink将丢弃该检查点**
 
     ```Java
     envCheckpointConfig.setCheckpointTimeout(5 * 1000L);

@@ -855,7 +855,7 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 -   **`log.segment.bytes`：**每个`segment`的大小，默认是`1 G`
 -   **`log.index.interval.bytes`：**`.index`维护索引的稀疏度，默认值为`4 K`，即`.log`文件每添加`4 K`数据，`.index`维护一条索引
 
-### 4.4.2、文件清理机制
+### 4.4.2 文件清理机制
 
 `segment`中的`.timeindex`文件维护了数据的时间戳，时间戳分为两类，`CreateTime`和`LogAppendTime`。`CreateTime`表示`producer`创建这条消息的时间；`logAppendTime`表示`broker`接收到这条消息的时间，严格来说，是`leader broker`将这条消息写入到`log`的时间。
 
@@ -1142,7 +1142,7 @@ Kafka文件目录结构：以单topic，单分区，单segment为例，分区名
 
 **解决消息的重复消费和漏消费，需要将消息的消费过程和`offset`的提交过程整合成一个事务。**
 
-## 5.4 消费者API
+## 5.4、消费者API
 
 ### 5.4.1 消费者数据消费
 
@@ -1630,7 +1630,7 @@ public class ConsumerRecord<K, V> {
 }
 ```
 
-## 5.5 消费者常用配置参数
+## 5.5、消费者常用配置参数
 
 -   **`bootstrap.servers`：**向`Kafka`集群建立初始连接用到的`host/port`列表
 -   **`key.serializer`：**指定发送消息的`key`的序列化类型。一定要写全类名
