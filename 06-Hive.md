@@ -22,7 +22,7 @@
 
 -   `Hive SQL`的表达能力有限：
     -   迭代算法无法表达
-    -   MapReduce数据处理流程的限制，效率更高的算法无法实现
+    -   `MapReduce`数据处理流程的限制，效率更高的算法无法实现
 -   `Hive SQL`的效率比较低：
     -   `Hive SQL`是``MapReduce``的二次包装，其执行效率通常较低
     -   `Hive SQL`调优比较困难
