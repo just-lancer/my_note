@@ -155,6 +155,103 @@
 
 # 二、Hive的安装部署
 
+## 2.1、Hive安装部署
+
 **见“大数据组件部署文档.md”**
 
-# 三、
+## 2.2、Hive常用技巧
+
+### 2.2.1 Hive常用交互命令
+
+```txt
+usage: hive
+ -d,--define <key=value>          Variable subsitution to apply to hive
+                                  commands. e.g. -d A=B or --define A=B
+                                  
+    --database <databasename>     Specify the database to use
+    
+ -e <quoted-query-string>         SQL from command line
+ 
+ -f <filename>                    SQL from files
+ 
+ -H,--help                        Print help information
+ 
+    --hiveconf <property=value>   Use value for given property
+    
+    --hivevar <key=value>         Variable subsitution to apply to hive
+    
+                                  commands. e.g. --hivevar A=B
+                                  
+ -i <filename>                    Initialization SQL file 指定一个初期化SQL来启动Hive
+ 
+ -S,--silent                      Silent mode in interactive shell 不显式日志信息
+ 
+ -v,--verbose                     Verbose mode (echo executed SQL to the console) 展示执行的SQL
+```
+
+### 2.2.2 Hive参数的配置
+
+**`Hive`参数配置的三种方式：**
+
+-   配置文件：
+
+    -   系统默认配置文件：`hive-default.xml`
+    -   用户自定义配置文件：`hive-site.xml`
+
+    需要说明的是，用户自定义配置会覆盖默认配置，并且，`Hive`在启动的时候，已经不再加载默认的配置文件。因为`Hive`是作为`Hadoop`客户端启动的，所以`Hive`也会读入`Hadoop`配置，并且，`Hive`的配置将会覆盖`Hadoop`的配置。
+
+-   命令行参数配置：
+
+    -   在启动`Hive`的时候，通过使用命令参数`--hiveconf parameter = value`，可以配置`Hive`的参数
+    -   查看当前`Hive`的参数值：`set parameter`
+
+    需要注意的是，通过命令行进行配置的参数，只对当前`Hive`客户端有效。
+
+-   参数声明方式：
+
+    -   在`Hive SQL`中，通过`set`关键字，可以对参数进行设置：`set parameter = value`
+
+    这种方式设置的参数也只是当前`Hive`客户端有效
+
+### 2.2.3 Hive常见属性配置
+
+-   `HIve CLI`客户端显示当前数据库名称和表头，需要在`hive-site.xml`配置文件中添加以下两个参数
+
+    ```xml
+    <property>
+        <name>hive.cli.print.header</name>
+        <value>true</value>
+        <description>Whether to print the names of the columns in query output.</description>
+    </property>
+    <property>
+        <name>hive.cli.print.current.db</name>
+        <value>true</value>
+        <description>Whether to include the current database in the Hive prompt.</description>
+    </property>
+    ```
+
+-   `Hive`运行日志路径配置，需要修改`/opt/module/hive-3.1.3/conf/hive-log4j.properties`配置文件中`property.hive.log.dir`配置项的值
+
+-   `Hive`的`JVM`堆内存设置，需要修改`/opt/module/hive-3.1.3/conf/hive-env.sh`中的`export HADOOP_HEAPSIZE`项
+
+    ```txt
+    export HADOOP_HEAPSIZE=2048
+    ```
+
+    新版本的`Hive`启动的时候，默认申请的`JVM`堆内存大小为`256 M`，`JVM`堆内存申请的太小，将导致`Hadoop Container`容器申请不到资源，或者申请占用的资源超出上限，进而失败。以及在开启本地模式，执行复杂的`SQL`时经常会报错：`java.lang.OutOfMemoryError: Java heap space`，因此最好调整一下`HADOOP_HEAPSIZE`这个参数
+
+>   需要说明的是，默认情况下，配置文件hive-log4j.properties和hive-env.sh都有后缀.template，表示默认情况下，Hive不会读取该配置文件，因此在配置相应参数之前，需要先去掉后缀，使配置文件生效
+
+-   关闭`Hadoop`虚拟内存检查，在`yarn-site.xml`配置文件中添加以下配置，并进行分发
+
+    ```xml
+    <property>
+        <name>yarn.nodemanager.vmem-check-enabled</name>
+        <value>false</value>
+    </property>
+    ```
+
+# 三、Hive DDL
+
+## 3.1、数据库DDL
+
