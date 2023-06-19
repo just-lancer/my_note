@@ -159,6 +159,8 @@
 
 **见“大数据组件部署文档.md”**
 
+https://www.cnblogs.com/zuouncle/p/16206123.html
+
 ## 2.2、Hive常用技巧
 
 ### 2.2.1 Hive常用交互命令
@@ -253,5 +255,64 @@ usage: hive
 
 # 三、Hive DDL
 
+**==`Hive SQL`编写规范：本文档中介绍的`Hive`语法全部遵循以下规范==**
+
+-   **`Hive`关键字使用大写字符；用户自定义内容，包含变量名（数据库名、表明、字段名、别名等）和属性名使用小写字符**
+-   **使用`[]`表示可选项，使用`<>`表示用户填写内容**
+
 ## 3.1、数据库DDL
 
+### 3.1.1 创建数据库
+
+**完整语法：**
+
+```hive
+CREATE DATABASE [IF NOT EXISTS] <database_name>
+[COMMENT <database_comment>]
+[LOCATION <hdfs_path>]
+[WITH DBPROPERTIES (<property_name> = <property_value>, ...)];
+```
+
+**关键字说明：**
+
+-   `COMMENT`：数据库的说明与注释
+-   `LOCATION`：数据库中数据在`Hadoop`上的存储路径，默认路径为：`${hive.metastore.warehouse.dir}/database_name.db`
+-   `DBPROPERTIES`：用户自定义属性和属性值，例如，数据库的创建时间、地点、创建者、最近一次修改时间等。
+
+**==创建数据库`test_db`用于数据库`DDL`演示：==**
+
+```hive
+-- 创建测试数据库
+CREATE DATABASE IF NOT EXISTS test_db
+    COMMENT '测试用数据库'
+    LOCATION '/user/hive/warehouse/'
+    WITH DBPROPERTIES ("creator" = "pqg", "create_time" = "2023-06-19","haha" = "hehe");
+```
+
+### 3.1.2 数据库查询
+
+-   **展示所有数据库**
+
+    **语法：**
+
+    ```hive
+    SHOW DATABASES [LIKE <'identifier_with_wildcards'];
+    ```
+
+    **关键字`LIKE`用于模糊匹配，其中，`*`表示任意个任意字符，`|`表示逻辑或**
+
+-   **查看数据库信息**
+
+    **语法：**
+
+    ```hive
+    DESCRIBE DATABASE [EXTENDED] <db_name>;
+    -- OR
+    DESC DATABASE [EXTENDED] <db_name>;
+    ```
+
+    ```
+    
+    ```
+
+    
