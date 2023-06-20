@@ -159,8 +159,6 @@
 
 **见“大数据组件部署文档.md”**
 
-https://www.cnblogs.com/zuouncle/p/16206123.html
-
 ## 2.2、Hive常用技巧
 
 ### 2.2.1 Hive常用交互命令
