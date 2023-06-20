@@ -262,7 +262,7 @@ usage: hive
 
 ### 3.1.1 创建数据库
 
-**完整语法：**
+**语法格式：**
 
 ```hive
 CREATE DATABASE [IF NOT EXISTS] <database_name>
@@ -291,7 +291,7 @@ CREATE DATABASE IF NOT EXISTS test_db
 
 -   **展示所有数据库**
 
-    **语法：**
+    **语法格式：**
 
     ```hive
     SHOW DATABASES [LIKE <'identifier_with_wildcards'];
@@ -309,8 +309,184 @@ CREATE DATABASE IF NOT EXISTS test_db
     DESC DATABASE [EXTENDED] <db_name>;
     ```
 
+    **演示案例1**
+    
+    ```hive
+    -- 查看数据库信息
+    DESCRIBE DATABASE test_db;
     ```
     
+    **`OUT`**![image-20230620222930183](./06-Hive.assets/image-20230620222930183.png)
+    
+    **演示案例2**
+    
+    ```hive
+    -- 查看数据库详细信息
+    DESCRIBE DATABASE EXTENDED test_db;
     ```
+    
+    **`OUT`![image-20230620223125176](./06-Hive.assets/image-20230620223125176.png)**
 
-    
+### 3.1.3 修改数据库
+
+在`Hive`中，可以通过`ALTER DATABASE`命令修改数据库的某些信息，其中能够修改的信息包括：`DBPROPERTIES`、`LOCATION`、`OWNER USER`。需要注意的时，修改数据库的`LOCATION`，不会改变当前已有数据表的路径信息，对于之后创建的数据表，其存储路径将会存储在新的`LOCATION`中。
+
+**语法格式：**
+
+```hive
+-- 修改DBPROPERTIES
+ALTER DATABASE <database_name> SET DBPROPERTIES (<property_name> = <property_value>, ...);
+
+-- 修改LOCATION
+ALTER DATABASE <database_name> SET LOCATION <hdfs_path>;
+
+-- 修改OWNER USER
+ALTER DATABASE <database_name> SET OWNER USER <user_name>;
+```
+
+### 3.1.4 删除数据库
+
+**语法格式：**
+
+```hive
+DROP DATABASE [IF EXISTS] <database_name> [RESTRICT|CASCADE];
+```
+
+**关键字说明**
+
+-   `RESTRICT`：严格模式，如果数据库不为空，则会删除失败，默认为该模式
+-   `CASCADE`：级联模式，若数据库不为空，则会将库中的表一并删除
+
+### 3.1.5 切换数据库
+
+**语法格式：**
+
+```hive
+USE <database_name>;
+```
+
+## 3.2 数据表DDL
+
+### 3.2.1 创建表
+
+#### 3.2.1.1 一般建表方式
+
+**语法格式：**
+
+```hive
+CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
+[(<col_name> <DATA_TYPE> [COMMENT <col_comment>], ...)]
+[COMMENT <table_comment>]
+[PARTITIONED BY (<col_name> <data_type> [COMMENT <col_comment>], ...)]
+[CLUSTERED BY (<col_name>, <col_name>, ...) 
+[SORTED BY (<col_name> [ASC|DESC], ...)] INTO <int num_buckets> BUCKETS]
+[ROW FORMAT <row_format>] 
+[STORED AS <file_format>]
+[LOCATION <hdfs_path>]
+[TBLPROPERTIES (<property_name> = <property_value>, ...)]
+```
+
+**关键字说明：**
+
+-   `TEMPORARY`：使用该关键字创建临时表。临时表只会在当前会话有效，会话结束后，表会被删除
+
+-   `EXTERNAL`：使用该关键字将创建外部表，与之相对应的是创建内部表，也称为管理表
+
+    -   外部表：`Hive`将接管外部表的元数据信息，不管理实际的数据。外部表删除时，只会删除元数据信息，不会删除实际的数据
+    -   内部表（内部表）：`Hive`将接管内部表的元数据信息和实际的数据。内部表删除时，元数据信息和实际的数据都会被删除
+
+-   `DATA_TYPE`：`Hive`支持的数据类型。`Hive`中，字段的数据类型可以分为基本数据类型和复杂数据类型
+
+    -   基本数据类型
+
+        | 数据类型    | 说明                                                | 定义                          |
+        | ----------- | --------------------------------------------------- | ----------------------------- |
+        | `tinyint`   | `1 byte`有符号整数                                  |                               |
+        | `smallint`  | `2 byte`有符号整数                                  |                               |
+        | `int`       | `4 byte`有符号整数                                  |                               |
+        | `bigint`    | `8 byte`有符号整数                                  |                               |
+        | `boolean`   | 布尔类型，`true`或者`false`                         |                               |
+        | `float`     | 单精度浮点数                                        |                               |
+        | `double`    | 双精度浮点数                                        |                               |
+        | `decimal`   | 十进制精准数字类型                                  | `decimal(16,2)`               |
+        | `varchar`   | 字符序列，需指定最大长度，最大长度的范围是[1,65535] | `varchar(32)`                 |
+        | `string`    | 字符串，无需指定最大长度                            |                               |
+        | `timestamp` | 时间类型                                            | 格式为：`yyyy-MM-dd hh:mm:ss` |
+        | `date`      | 时间类型                                            | 格式为：`yyyy-MM-dd`          |
+        | `binary`    | 二进制数据                                          |                               |
+
+    -   复杂数据类型
+
+        | 数据类型 | 说明                                   | 定义                          | 取值方式     |
+        | -------- | -------------------------------------- | ----------------------------- | ------------ |
+        | `array`  | 一组相同类型的值的集合                 | `array<string>`               | `arr[0]`     |
+        | `map`    | 一组相同类型的键-值对集合              | `map<string, int>`            | `map['key']` |
+        | `struct` | 由多个属性组成，属性有自己的名称和类型 | `struct<id:int, name:string>` | `struct.id`  |
+
+    -   数据类型转换：`Hive`的基本数据类型可以做类型转换，转换的方式包括隐式转换以及显示转换
+
+        -   隐式转换：具体规则如下：
+
+            -   任何整数类型都可以隐式地转换为一个范围更广的类型，如`tinyint`可以转换成`int`，`int`可以转换成`bigint`
+            -   所有整数类型、`float`和`string`类型都可以隐式地转换成`double`。`string`类型转换成`double`需要数据具备数值形式
+            -   `tinyint`、`smallint`、`int`都可以转换为`float`
+            -   `boolean`类型不可以转换为任何其它的类型
+
+            详细的转换规则可查看官网：[Allowed Implicit Conversions](https://cwiki.apache.org/confluence/display/hive/languagemanual+types#LanguageManualTypes-AllowedImplicitConversions)
+
+        -   显示转换：需要通过`cast`函数进行数据转换
+
+            **语法格式：**
+
+            ```hive
+            cast(expr as <type>)
+            ```
+
+    -   `PARTITIONED BY`：创建分区表
+
+    -   `CLUSTERED BY`：创建分桶表
+
+    -   `SORTED BY...INTO...BUCKETS`：与`CLUSTERED BY`联合使用，设置分桶表的排序字段和分桶数量
+
+    -   `ROW FORMAT`：用于指定`SERDE`，`SERDE`是`Serializer and Deserializer`的缩写，用于`Hive`读写`Hadoop`文件中每一行数据的序列化和反序列化的方式。需要注意的是`ROW FORMAT`用于指定Hive读取每一行数据的方式SERDE`详细的介绍可看官网： [Hive-Serde](https://cwiki.apache.org/confluence/display/Hive/DeveloperGuide#DeveloperGuide-HiveSerDe)
+
+        `ROW FORMAT`语法介绍。`Hive`官方提供了两种`ROW FORMAT`的书写方式，一种是对于结构化数据的读取，另一种是对于半结构化数据的读取
+
+        **结构化数据：**通过`DELIMITED`关键字对文件中的每个字段按照特定分隔符进行分割，`Hive`会使用默认的`SERDE`对每行数据进行序列化和反序列化
+
+        **语法格式：**
+
+        ```hive
+        ROW FORAMT DELIMITED 
+        [FIELDS TERMINATED BY <char field_separator>] 
+        [COLLECTION ITEMS TERMINATED BY <char collection_separator>] 
+        [MAP KEYS TERMINATED BY <char map_separator>] 
+        [LINES TERMINATED BY <char line_separator>] 
+        [NULL DEFINED AS <char replace_null>]
+        ```
+
+        **关键字介绍：**
+
+        -   `FIELDS TERMINATED BY`：字段分隔符
+        -   `COLLECTION ITEMS TERMINATED BY`：复杂数据类型`map`、`array`和`struct`中每个元素之间的分隔符
+        -   `MAP KEYS TERMINATED BY`：`map`中，`key`和`value`之间的分隔符
+        -   `LINES TERMINATED BY`：行分隔符
+        -   `NULL DEFINED AS`：将空值替换为指定字符，默认的替换字符为：`\N`
+
+        **半结构化数据：**通过`SERDE`关键字，指定`Hive`官方提供的内置`SERDE`或用户自定义`SERDE`，最为常见的内置`SERDE`为对`JSON`数据解析的`SERDE`
+
+        **语法格式：**
+
+        ```hive
+        ROW FORMAT SERDE <serde_name> [WITH SERDEPROPERTIES (<property_name> = <property_value>,...)]
+        ```
+
+    -   `STORED AS`：指定`Hive`表数据在`Hadoop`中的文件存储格式，常见的文件格式有，`textfile`（默认值），`sequence file`，`orc file`，`parquet file`
+
+        在`HDFS`中，不同存储的格式的文件，`Hadoop`读取和写入的所使用的`InputFormat`和`OutputFormat`均不一样，因此，指定数据的文件存储格式，其底层是指定了`Hadoop`读取这些**文件**的方式
+
+    -   `LOCATION`：指定表所对应的`HDFS`路径，若不指定路径，其默认值为：`${hive.metastore.warehouse.dir}/db_name.db/table_name`
+
+    -   `TBLPROPERTIES`：自定义表相关属性，使用`key-value`的形式进行定义
+
+#### 3.2.1.2 CREATE TABLE  AS SELECT (CTAS)建表
