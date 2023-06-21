@@ -365,7 +365,7 @@ DROP DATABASE [IF EXISTS] <database_name> [RESTRICT|CASCADE];
 USE <database_name>;
 ```
 
-## 3.2 数据表DDL
+## 3.2、表DDL
 
 ### 3.2.1 创建表
 
@@ -473,7 +473,7 @@ CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
         -   `LINES TERMINATED BY`：行分隔符
         -   `NULL DEFINED AS`：将空值替换为指定字符，默认的替换字符为：`\N`
 
-        **半结构化数据：**通过`SERDE`关键字，指定`Hive`官方提供的内置`SERDE`或用户自定义`SERDE`，最为常见的内置`SERDE`为对`JSON`数据解析的`SERDE`
+        **半结构化数据：**通过`SERDE`关键字，指定`Hive`官方提供的内置`SERDE`或用户自定义`SERDE`，最为常见的内置`SERDE`为对`JSON`数据解析的`SERDE`，其`SERDE`的全类名为：`org.apache.hadoop.hive.serde2.JsonSerDe`
 
         **语法格式：**
 
@@ -490,3 +490,40 @@ CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
     -   `TBLPROPERTIES`：自定义表相关属性，使用`key-value`的形式进行定义
 
 #### 3.2.1.2 CREATE TABLE  AS SELECT (CTAS)建表
+
+该建表语法利用`SELECT`查询返回的结果直接建表，表的结构和查询语句的结构保持一致， `SELECT`语句的查询结果即为表的初始数据。
+
+**语法格式：**
+
+```hive
+CREATE [TEMPORARY] TABLE [IF NOT EXISTS] <table_name> 
+[COMMENT <table_comment>] 
+[ROW FORMAT <row_format>] 
+[STORED AS <file_format>] 
+[LOCATION <hdfs_path>]
+[TBLPROPERTIES (<property_name> = <property_value>, ...)]
+[AS <select_statement>]
+```
+
+#### 3.2.1.3 CREATE TABLE LIKE建表
+
+该建表语法将复刻一张已存在的表结构，与`CTAS`建表语法不同的是，该语法只能创建出表结构，无法在创建表的同时添加初始化数据。
+
+**语法格式：**
+
+```hive
+CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
+[LIKE <exist_table_name>]
+[ROW FORMAT <row_format>] 
+[STORED AS <file_format>] 
+[LOCATION <hdfs_path>]
+[TBLPROPERTIES (<property_name> = <property_value>, ...)]
+```
+
+**演示案例：创建一张表**
+
+```hive
+
+```
+
+### 3.2.2 查看表
