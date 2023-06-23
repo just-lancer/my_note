@@ -523,7 +523,304 @@ CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
 **演示案例：创建一张表**
 
 ```hive
-
+-- 创建测试数据表
+CREATE TABLE IF NOT EXISTS user_info
+(
+    id   int COMMENT '用户id',
+    name varchar(20) COMMENT '用户姓名',
+    age  int COMMENT '用户年龄',
+    mail string COMMENT '用户邮箱'
+)
+    COMMENT '用户信息表'
+;
 ```
 
 ### 3.2.2 查看表
+
+#### 3.2.2.1 查看所有表
+
+**语法格式：**
+
+```hive
+SHOW TABLES [IN <database_name>] [LIKE <identifier_with_wildcards>];
+```
+
+**演示案例：查看`test_db`数据库下的所有数据表**
+
+```hive
+-- 查看test_db数据库下的所有数据表
+SHOW TABLES IN test_db;
+```
+
+![image-20230623121129600](./06-Hive.assets/image-20230623121129600.png)
+
+#### 3.2.2.2 查看表信息
+
+**语法格式：**
+
+```hive
+DESCRIBE | DESC [EXTENDED | FORMATTED] [<db_name.>]<table_name>
+```
+
+**演示：查看`user_info`表的信息以及详细信息**
+
+```hive
+-- 查看user_info表的信息
+DESC user_info;
+```
+
+![image-20230623121714898](./06-Hive.assets/image-20230623121714898.png)
+
+```hive
+-- 查看user_info表的详细信息
+DESC EXTENDED user_info;
+```
+
+![image-20230623121835999](./06-Hive.assets/image-20230623121835999.png)
+
+#### 3.2.2.3 修改表
+
+-   **重命名表**
+
+    ```hive
+    ALTER TABLE <table_name> RENAME TO <new_table_name>
+    ```
+
+-   **增加列：在指定表中新增一列，新增列置于末尾**
+
+    ```hive
+    ALTER TABLE <table_name> ADD COLUMNS (<col_name> <data_type> [COMMENT <col_comment>], ...)
+    ```
+
+-   **更新列：可以修改指定表的指定列的列名、数据类型、注释信息以及在表中的位置**
+
+    **==需要说明的是，修改列在表中的位置，只会修改元数据信息，不会修改`Hadoop`中的数据，因此，非必要不要修改列的位置信息。如果修改了列的信息，那么需要手动修改`Hadoop`中数据==**
+
+    ```hive
+    ALTER TABLE <table_name> 
+    CHANGE [COLUMN] <col_old_name> <col_new_name> <column_type> 
+    [COMMENT <col_comment>] [FIRST | AFTER <column_name>]
+    ```
+
+-   **替换列：使用新的列集替换原来的全部列，同样也只是修改元数据信息**
+
+    ```hive
+    ALTER TABLE <table_name> 
+    REPLACE COLUMNS (<col_name> <data_type> [COMMENT <col_comment>], ...)
+    ```
+
+#### 3.2.2.4 删除表
+
+**语法格式：**
+
+```hive
+DROP TABLE [IF EXISTS] <table_name>;
+```
+
+#### 3.2.2.5 清空表
+
+```hive
+TRUNCATE [TABLE] <table_name>;
+```
+
+# 四、Hive DML
+
+## 4.1、Load
+
+`Load`语句用于将文件中的数据导入到`Hive`的数据表中
+
+**语法格式：**
+
+```hive
+LOAD DATA [LOCAL] INPATH <file_path> [OVERWRITE] INTO TABLE <table_name> 
+[PARTITION (<partcol1> = <val1>, <partcol2> = <val2> ...)];
+```
+
+**关键字说明：**
+
+-   `LOCAL`：使用该关键字，表示将服务器节点本地文件的数据加载到`Hive`中，其本地根据不同的客户端类型会有所不同，如果是`Hive CLI`客户端，那么本地指的是`Hive CLI`所在的节点；如果使用`JDBC`客户端，那么本地指的是`hiveserver2`服务所在的节点。如果不使用`LOCAL`关键字，表示将`HDFS`中的文件加载到`Hive`中
+
+    需要注意的是，如果使用`LOCAL`关键字，那么会将本地的文件复制一份到`HDFS`中；如果不使用`LOCAL`关键字，那么会将`HDFS`中的文件剪切到表的存储路径下
+
+-   `OVERWRITE`：使用该关键字，表示新的文件数据将覆盖表原有的数据；不使用该关键字，表示向原有表中追加数据
+
+-   `PARTITION`：表示上传到指定分区，若目标是分区表，需指定分区。
+
+## 4.2、Insert
+
+### 4.2.1 将给定Values插入表中
+
+**语法格式：**
+
+```hive
+INSERT (INTO | OVERWRITE) TABLE <table_name> 
+[PARTITION (<partcol1> [ = <val1> ], <partcol2> [ = val2 ] ...)] 
+VALUES <values_row> [, <values_row> ...]
+```
+
+**`PARTITION`关键字说明**
+
+使用`PARTITION`关键字表示向分区表中插入数据，其后需要跟上分区字段。
+
+使用`partcol1 = val1`的形式指定分区，表示向指定的分区插入数据；使用`partcol1`的形式指定分区，表示进行动态分区，将根据分区字段的值，动态地将数据插入指定的分区中。
+
+### 4.2.2 将查询结果插入表中
+
+**语法格式：**
+
+```hive
+INSERT (INTO | OVERWRITE) TABLE <table_name> 
+[PARTITION (<partcol1> = <val1>, <partcol2> = <val2> ...)] 
+<select_statement>;
+```
+
+**关键字说明：**
+
+-   `INTO`：将结果追加到目标表
+-   `OVERWRITE`：用结果覆盖原有数据
+
+### 4.2.3 将查询结果写入目标路径
+
+**语法格式：**
+
+```hive
+INSERT OVERWRITE [LOCAL] DIRECTORY <directory> 
+[ROW FORMAT <row_format>] 
+[STORED AS <file_format>] 
+<select_statement>;
+```
+
+## 4.3、Export & Import
+
+`Export`导出语句可将表的数据和元数据信息一并导出到`HDFS`路径，`Import`可将`Export`导出的内容导入`Hive`，表的数据和元数据信息都会恢复。`Export`和`Import`可用于两个`Hive`实例之间的数据迁移。
+
+**语法格式：**
+
+```hive
+-- 导出
+EXPORT TABLE <table_name> TO <export_target_path>
+
+-- 导入
+IMPORT [EXTERNAL] TABLE <new_or_original_tablename> 
+FROM <source_path> 
+[LOCATION <import_target_path>]
+```
+
+**说明：**
+
+-   导出语句中的目标路径`export_target_path`需要和导入语句中的源路径`source_path`保持一致
+-   导入语句，相当于创建了一张`Hive`表，开发者可以控制这张表是否是外部表，以及存储路径
+
+# 五、Hive DQL
+
+**基本查询语法格式：**
+
+```hive
+SELECT [ALL | DISTINCT] select_expr1 [, select_expr2, ...]
+FROM table_reference       
+[WHERE where_condition]   
+[GROUP BY col_list]        
+[HAVING col_list]          
+[ORDER BY col_list]        
+[
+    CLUSTER BY col_list | 
+    [DISTRIBUTE BY col_list] [SORT BY col_list]
+]
+[LIMIT number]                
+```
+
+`Hive SQL`的语法格式与一般的关系型数据库的语法基本相似，因此，在`DQL`语法中，将会着重介绍`Hive`的特殊语法以及较为容易混淆的语法。对于基本查询语法，市面上已有许多`SQL`语法介绍，直接查看即可。
+
+## 5.1、基本查询
+
+### 5.1.1 LIMIT
+
+一般查询将返回多行数据。使用`LIMIT`子句可以限制返回的行数。
+
+```hive
+SELECT *
+FROM user_info
+LIMIT 5 -- 表示返回查询结果的前5行
+;
+
+SELECT *
+FROM user_info
+LIMIT 2,3 -- 表示从第2行开始，向下抓取3行
+; 
+```
+
+### 5.1.2 聚合函数
+
+-   `count(*)`：统计所有行数，包含空值
+-   `count(<column_name>)`：统计指定列一共有多少行，不包含空值
+-   `max(<column_name>)`，返回指定列的除空值之外的最大值，如果所有数据都是空值，那么返回`null`
+-   `min(<column_name>)`，返回指定列的除空值之外的最小值，如果所有数据都是空值，那么返回`null`
+-   `sum(<column_name>)`，返回指定列除空值之外的所有数据的和，如果所有数据都是空值，那么返回`null`
+-   `sum(<column_name>)`，返回指定列除空值之外的所有数据的平均值，如果所有数据都是空值，那么返回`null`
+
+## 5.2、关系运算符
+
+关系运算符主要使用在`where`和`having`字句中。
+
+-   `A = B`：支持基本数据类型。如果`A`等于`B`则返回`true`，反之返回`false`。如果`null`参与计算，返回结果为`null`
+-   `A <=> B`：支持基本数据类型。如果`A`和`B`都为`null`，返回结果为`true`；如果只有一方为`null`，返回结果为`null`。其他与`A = B`相同
+-   `A <> B, A != B`：支持基本数据类型。`A`或者`B`为`null`则返回`null`；如果`A`不等于`B`，则返回`true`，反之返回`false`
+-   `A < B`：支持基本数据类型。`A`或者`B`为`null`，则返回`null`；如果`A`小于`B`，则返回`true`，反之返回`false`
+-   `A <= B`：支持基本数据类型。`A`或者`B`为`null`，则返回`null`；如果`A`小于等于`B`，则返回`true`，反之返回`false`
+-   `A > B`：支持基本数据类型。  `A`或者`B`为`null`，则返回`null`；如果`A`大于`B`，则返回`true`，反之返回`false  `
+-   `A >= B`：支持基本数据类型。`A`或者`B`为`null`，则返回`null`；如果`A`大于等于`B`，则返回`true`，反之返回`false`
+-   `A [not] between B and C`：支持基本数据类型。如果`A`，`B`或者`C`任一为`null`，则结果为`null`。如果`A`的值大于等于`B`而且小于或等于`C`，则结果为`true`，反之为`false`。如果使用`not`关键字则可达到相反的效果。
+-   `A is null`：支持所有数据类型。如果`A`为`null`，则返回`true`，反之返回`false`
+-   `A is not null`：支持所有数据类型。如果`A`不等于`null`，则返回`true`，反之返回`false`
+-   `A in (value1 [，value2, ...])`：支持所有数据类型。如果`A`的值存在于`in`列表中，返回`true`，否则返回`false`
+-   `A [not] like B`：支持`string`类型。`B`是一个`SQL`下的简单正则表达式，也叫通配符模式，如果`A`与其匹配的话，则返回`true`；反之返回`false`。使用`%`表示任意多个字符，使用`_`表示一个字符
+-   `A rlike B`, `A regexp B`：支持`string`类型。`B`是基于`java`的正则表达式，如果`A`与其匹配，则返回`true`；反之返回`false`。匹配使用的是`JDK`中的正则表达式接口实现的，因为正则也依据其中的规则。
+
+## 5.3、逻辑运算符
+
+-   `and`：逻辑与
+-   `or`：逻辑或
+-   `not`：逻辑非
+
+## 5.4、排序
+
+-   `ORDER BY`：全局排序，只创建一个`ReduceTask`任务
+
+    `ORDER BY`子句在`SELECT`语句的最末尾，用于对所有数据进行排序，默认情况为升序排序`ASC`，使用`DESC`表示降序排序。一般情况下，单独使用`ORDER BY`将消耗大量内存资源，因此，一般将`ORDER BY`与`LIMIT`子句联合使用，在使用了`LIMIT`子句之后，`MapTask`任务会根据`LIMIT`限制的数据条数，提前将数据过滤，这样会使得`ReduceTask`不会消耗很多内存资源
+
+-   `DISTRIBUTE BY`：设置分区字段，`MapReduce`将根据分区字段对数据进行分区
+
+-   `SORT BY`：分区内排序。`SORT BY`为每一个分区创建一个排序文件，里面存放排序好的数据
+
+-   `CLUSTER BY`：当`DISTRIBUTER BY`与`SORT BY`的字段相同时，可以使用`CLUSTER BY`替代
+
+# 六、函数
+
+`Hive`提供了大量的内置函数，按照其特点可大致分为如下几类：单行函数`UDF`、聚合函数`UDAF`、炸裂函数`UDTF`、窗口函数。
+
+**与函数相关的命令：**
+
+-   查看系统所有内置函数：
+
+    ```hive
+    SHOW FUNCTIONS;
+    ```
+
+-   查看内置函数的用法：
+
+    ```hive
+    DESCRIBE | DESC FUNCTION <function_name>
+    ```
+
+-   查看内置函数的详细信息：
+
+    ```hive
+    DESCRIBE | DESC FUNCTION EXTENDED <function_name>
+    ```
+
+## 6.1、算数运算函数
+
+-   **`A + B`：`A`和`B`相加**
+-   **`A - B`：`A`减去`B`**
+-   **`A * B`：`A`和`B`相乘**
+-   
