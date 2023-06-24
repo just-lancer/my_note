@@ -820,7 +820,349 @@ LIMIT 2,3 -- 表示从第2行开始，向下抓取3行
 
 ## 6.1、算数运算函数
 
--   **`A + B`：`A`和`B`相加**
--   **`A - B`：`A`减去`B`**
--   **`A * B`：`A`和`B`相乘**
--   
+## 6.2、数值函数
+
+## 6.3、字符串函数
+
+**==需要注意的是，在`Hive`中，字符串的索引从`1`开始==**
+
+## 6.4、日期函数
+
+**==使用日期函数时，需要注意的是时区问题==**
+
+## 6.5、流程控制函数
+
+## 6.6、集合函数
+
+**==需要声明的是，`Hive`不区分大小写==**
+
+**`Array`相关函数：**
+
+-   **`Array array(val1[, val2, …])`：声明一个数组**
+-   **`boolean array_contains(Array<T>, value)`：判断集合中是否包含指定元素**
+-   **`Array<T> sort_array(Array<T>)`**
+-   **`int size(Array<T>)`：计算数组中元素的个数**
+-   **`Array collect_list(col)`：将给定字段的数据构成一个数组，不去重**
+-   **`Array collect_set(col)`：将给定字段的数据构成一个数组，去重**
+
+**`Map`相关函数：**
+
+-   **`Map map(key1, value1, key2, value2, ...)`：声明一个`map`集合**
+-   **`Array<k> map_keys(Map<K.V>)`：返回集合中的全部`key`**
+-   **`Array<V> map_keys(Map<K.V>)`：返回集合中的全部`value`**
+-   **`int  size(Map<K.V>)`：返回`Map`集合中元素的个数**
+
+**`Struct`相关函数：**
+
+-   **`Struct struct(val1[, val2, val3, ...])`：声明`struct`中的各个属性**
+-   **`Struct named_struct(name1, val1[, name2, val2, ...])`：同时声明``struct`的属性和值**
+
+## 6.7、UDTF
+
+**`UDTF(User Defined Table-Generating Functions)`：接收一行数据，输出一行或者多行数据**。
+
+**`UDTF`一般与`lateral view`关键字联合使用**
+
+-   **`T explode(ARRAY<T> a)`：返回`n`行数据，每行对应数组中的一个元素**
+-   **`K,V explode(MAP<K,V> m)`：返回`n`行数据，每行对应每个`map`的`key-value`，其中一个字段是`map`的键，另一个字段是`map`的值**
+-   **`int,T posexplode(ARRAY<T> a)`：返回`n`行数据，每行对应数据中的一个元素，以及该元素的索引**
+-   **`T1,...,Tn inline(ARRAY<STRUCT<f1:T1,...,fn:Tn>> a)`：将结构体数组中的元素提取出来并插入到表的一个字段中，字段的值即为每个结构体对象**
+-   **`T1,...,Tn/r stack(int r,T1 V1,...,Tn Vn)`：把`n`列转换成`r`行，每行有`n/r`个字段，其中`r`必须是个常数**
+-   **`string1,...,stringN json_tuple(string jsonStr,string k1,...,string kn)`：从一个`JSON`字符串中获取多个键并作为一个元组返回，与`get_json_object`不同的是此函数能一次获取多个键值**
+-   **`string 1,...,stringn parse_url_tuple(string urlStr,string p1,...,string pn)`：返回从`URL`中抽取指定`N`部分的内容，参数`url`是URL字符串，而参数`p1,p2,…`是要抽取的部分，这个参数包含`HOST`, `PATH`, `QUERY`, `REF`, `PROTOCOL`, `AUTHORITY`, `FILE`, `USERINFO`, `QUERY`**
+
+## 6.8、窗口函数
+
+## 6.9、自定义函数
+
+当`Hive`提供的内置函数无法满足需求时，可以通过自定义函数来实现业务逻辑。
+
+`Hive`的内置函数分为`UDF`、`UDAF`、`UDTF`和窗口函数，因此，自定义函数也可以定义这四类函数，但在一般的业务场景中，往往只需要自定义`UDF`函数，再结合其他内置函数就能够实现业务逻辑，因此，将着重介绍自定义`UDF`函数。
+
+**[自定义函数`Hive`官方文档地址](https://cwiki.apache.org/confluence/display/Hive/HivePlugins)**
+
+**自定义函数步骤：以自定义`UDF`为例：**
+
+-   **导入`maven`依赖：**
+
+    ```xml
+    <!-- hive 3.1.2和3.1.3版本的函数没有什么区别，因此依赖的版本可以随意 -->
+    <dependencies>
+    	<dependency>
+    		<groupId>org.apache.hive</groupId>
+    		<artifactId>hive-exec</artifactId>
+    		<version>3.1.3</version>
+    	</dependency>
+    </dependencies>
+    ```
+
+-   **继承`Hive`提供的抽象类，并实现抽象方法**
+
+    -   **`UDF`：`org.apache.hadoop.hive.ql.udf.generic.GenericUDF`**
+
+        ```java
+            public ObjectInspector initialize(ObjectInspector[] arguments) throws UDFArgumentException {
+                return null;
+            }
+        
+            public Object evaluate(DeferredObject[] arguments) throws HiveException {
+                return null;
+            }
+        
+            public String getDisplayString(String[] children) {
+                return null;
+            }
+        ```
+
+        
+
+    -   **`UDTF`：`org.apache.hadoop.hive.ql.udf.generic.GenericUDTF`**
+
+        ```hive
+            public void process(Object[] args) throws HiveException {
+                
+            }
+        
+            public void close() throws HiveException {
+        
+            }
+        ```
+
+-   **在`Hive`中注册并声明函数：**
+
+    -   创建临时函数：
+
+        -   将自定义函数打成`jar`包，并上传到`Hive`目录下，一般放在`Hive`的`lib`目录下
+
+        -   将`jar`包添加到`hive`的`classpath`路径下。**注意该操作单会话内有效**
+
+            ```hive
+            ADD jar <jar_path>
+            ```
+
+        -   创建临时函数，并与自定义函数的全类名进行关联
+
+            ```hive
+            CREATE TEMPORARY FUNCTION <function_name>
+            AS <full_class_name>
+            ```
+
+        -   随后便可以在该会话内使用自定义的临时函数
+
+        -   **删除临时函数**
+
+            ```hive
+            DROP TEMPORARY FUNCTION <function_name>
+            ```
+
+        **==临时函数只在当前会话有效，与数据库没有关系。只要创建临时函数的会话不断开，在当前会话下，任意一个数据库都可以使用，其他会话全都不能使用。==**
+
+    -   创建永久函数：
+
+        -   将自定义函数打成`jar`包，并上传`HDFS`目录下
+
+            与创建临时函数不同的时，在创建永久函数的时候，需要指定路径，并且因为元数据的原因，指定的路径还需要是`HDFS`的路径
+
+        -   创建永久函数
+
+            ```hive
+            CREATE FUNCTION <function_name>
+            AS <full_class_name>
+            USING jar <jar_hdfs_path>
+            ```
+
+        -   随后边可以在`Hive`中使用永久函数
+
+        -   删除永久函数
+
+            ```hive
+            DROP FUNCTION <function_name>
+            ```
+
+        **==需要注意的是，永久函数和会话没有关系，在创建了永久函数之后，其他会话也可以使用该函数。但区别与临时函数的是，永久函数由数据库之分，默认情况下，永久函数属于创建函数所在的数据库，如果位于其他数据库下，希望使用永久函数，那么需要指定永久函数的数据库名，因为默认情况下，永久函数会把当前数据库的库名加上。==**
+
+# 七、分区表和分桶表
+
+`Hive`中的分区就是将一张表的数据按照业务需要分散地存储到多个目录，每个目录就称之为该表的一个分区。因此，`Hive`中，分区表就是将数据分目录存储。
+
+**完整的建表语句：**
+
+```hive
+CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
+[(<col_name> <DATA_TYPE> [COMMENT <col_comment>], ...)]
+[COMMENT <table_comment>]
+[PARTITIONED BY (<col_name> <data_type> [COMMENT <col_comment>], ...)]
+[CLUSTERED BY (<col_name>, <col_name>, ...) 
+[SORTED BY (<col_name> [ASC|DESC], ...)] INTO <int num_buckets> BUCKETS]
+[ROW FORMAT <row_format>] 
+[STORED AS <file_format>]
+[LOCATION <hdfs_path>]
+[TBLPROPERTIES (<property_name> = <property_value>, ...)]
+```
+
+其中，关键字`PARTITION`用于创建分区表，在创建分区表时，需要指定分区字段的名称和相应的数据类型。此外，指定分区字段时，可以指定多个分区，表示能够创建多级分区，在底层数据存储的体现上，表现为，一级分区目录下，存储着二级分区的目录。当分区层级较多时，依次类推。
+
+## 7.1、分区表基本语法
+
+### 7.1.1 创建分区表
+
+### 7.1.2 分区表数据装载与查询
+
+**数据装载**
+
+与一般数据数据表的数据装载不同，向分区表中装载数据时，需要指定向哪个分区进行数据装载
+
+-   **`load`方式：将本地或者`HDFS`上文件的数据装载到分区表的指定分区中**
+
+    ```hive
+    -- 语法格式
+    LOAD DATA [LOCAL] INPATH <file_path> INTO TABLE <table_name> 
+    PARTITION (<partition_col1> = <partition_value1> [, <partition_col2> = <partition_value2>, ...] );
+    ```
+
+-   **`insert`方式：将查询结果的数据装载到分区表的指定分区中**
+
+    ```hive
+    -- 语法格式
+    INSERT INTO | OVERWRITE TABLE <table_name> 
+    PARTITION (<partition_col1> = <partition_value1> [, <partition_col2> = <partition_value2>, ...])
+    <select_statement>
+    ```
+
+**数据查询**
+
+对分区表数据的查询中，只需要将分区字段作为普通的字段进行使用即可。建议在查询分区表数据时，在`WHERE`子句中对分区进行过滤，该操作将极大提升`Hive`的数据查询效率。
+
+### 7.1.3 分区表操作命令
+
+-   查看所有分区信息
+
+    ```hive
+    SHOW PARTITIONS <table_name>;
+    ```
+
+-   增加分区
+
+    ```hive
+    -- 增加一个分区
+    ALTER TABLE <table_name> ADD PARTITION (<partition_col1> = <partition_value1>);
+    
+    -- 同时增加多个分区
+    ALTER TABLE <table_name> ADD 
+    PARTITION (<partition_col1> = <partition_value1>) 
+    PARTITION (<partition_col2> = <partition_value2>)
+    [PARTITION (<partition_col3> = <partition_value3>) ...]
+    ;
+    ```
+
+-   删除分区
+
+    ```hive
+    -- 删除单个分区
+    ALTER TABLE <table_name> DROP PARTITION (<partition_col1> = <partition_value1>);
+    
+    -- 删除多个分区，注意，分区之间需要用逗号隔开
+    ALTER TABLE <table_name> DROP 
+    PARTITION (<partition_col2> = <partition_value2>)
+    [,PARTITION (<partition_col3> = <partition_value3>)
+    , ...]
+    ;
+    ```
+
+-   修复分区
+
+    `Hive`将分区表的所有分区信息都保存在了元数据中，只有元数据与`HDFS`上的分区路径一致时，分区表才能正常读写数据。若手动创建或删除分区路径，`Hive`是感知不到的，这样会导致`Hive`的元数据和`HDFS`的分区路径不一致。除此之外，若分区表为外部表，执行`drop partition`命令后，分区元数据会被删除，而`HDFS`的分区路径不会被删除，同样会导致`Hive`的元数据和`HDFS`的分区路径不一致。
+
+    而当元数据和`HDFS`路径不一致时，需要修复分区的元数据信息，分区表才能正常使用。
+
+    **`ADD PARTITION`**
+
+    如果手动创建`HDFS`的分区路径，`Hive`无法识别，可通过`ADD PARTITION`命令增加新增分区元数据信息，从而使元数据和分区路径保持一致
+
+    **`DROP PARTITION`**
+
+    如果手动删除`HDFS`的分区路径，`Hive`无法识别，可通过`DROP PARTITION`命令删除分区元数据信息，从而使元数据和分区路径保持一致
+
+    **`MSCK`：`metastore check`**
+
+    若分区元数据和HDFS的分区路径不一致，还可使用msck命令进行修复
+
+    ```hive
+    -- 语法格式
+    MSCK REPAIRE TABLE <table_name> [ADD | DROP | SYNC PARTITIONS];
+    ```
+
+    **说明：**
+
+    `MSCK REPAIRE TABLE <table_name>;`：等价于`MSCK REPAIRE TABLE <table_name> ADD PARTITIONS;`
+
+    `MSCK REPAIRE TABLE <table_name> ADD PARTITIONS;`：该命令会增加`HDFS`路径存在但元数据缺失的分区信息
+
+    `MSCK REPAIRE TABLE <table_name> DROP PARTITIONS;`：该命令会删除`HDFS`路径已经删除但元数据仍然存在的分区信息
+
+    `MSCK REPAIRE TABLE <table_name> ADD PARTITIONS;`：该命令会同步`HDFS`路径和元数据分区信息，相当于同时执行上述的两个命令
+
+## 7.2、动态分区
+
+动态分区是指向分区表`INSERT`数据时，被写往的分区不指定具体的分区值，而是由每行数据的最后一个多出来的字段的值来动态决定当前数据发往哪个分区
+
+使用动态分区，可只用一个`INSERT`语句将数据写入多个分区
+
+**动态分区相关的参数**
+
+-   **`hive.exec.dynamic.partition`：是否开启动态分区。默认值为`true`，表示开启动态分区**
+-   **`hive.exec.dynamic.partition.mode`：严格模式和非严格模式。默认值为`strict`，表示严格模式。非严格模式取值为`nonstrict`。在严格模式下，使用动态分区要求必须指定至少一个分区为静态分区，即必须指定至少一个分区字段的值。在非严格模式下，允许所有的分区字段都使用动态分区**
+-   **`hive.exec.max.dynamic.partitions`：一个`INSERT`语句可同时创建的最大的分区个数，默认值为`1000`**
+-   **`hive.exec.max.dynamic.partitions.pernode`：单个`MapTask`或者`ReduceTask`可同时创建的最大的分区个数，默认为`100`**
+-   **`hive.exec.max.created.files`：一个`INSERT`语句可以创建的最大的文件个数，默认值为`100000`**
+-   **`hive.error.on.empty.partition=false`：当查询结果为空时且进行动态分区时，是否抛出异常，默认`false`，即不抛出异常**
+
+## 7.3、分桶表
+
+分区表是将数据按目录进行划分存储，而分桶表是将数据按文件进行划分存储。分区表与分桶表并不冲突，一张表既可以是分区表，同时，也可以是分桶表，这种情况下，数据的分桶将在每个目录下进行。
+
+区别于分区表，分桶表的分桶字段必须是表中实际存在的字段。分区表中的分区字段虽然可以当作普通字段来使用，但其实并不是实际的字段，而是分区目录的目录名。
+
+分桶表的基本原理是，首先为每行数据计算一个或多个指定字段的数据的`hash`值，然后模以一个指定的分桶数，最后将取模运算结果相同的行，写入同一个文件中，这个文件就称为一个分桶`bucket`。
+
+**完整的建表语句**
+
+```hive
+CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
+[(<col_name> <DATA_TYPE> [COMMENT <col_comment>], ...)]
+[COMMENT <table_comment>]
+[PARTITIONED BY (<col_name> <data_type> [COMMENT <col_comment>], ...)]
+[
+    CLUSTERED BY (<col_name>, <col_name>, ...) 
+   [SORTED BY (<col_name> [ASC|DESC], ...)] 
+    INTO <int num_buckets> BUCKETS
+]
+[ROW FORMAT <row_format>] 
+[STORED AS <file_format>]
+[LOCATION <hdfs_path>]
+[TBLPROPERTIES (<property_name> = <property_value>, ...)]
+```
+
+其中，`CLUSTERED BY`语句用来创建分桶表，创建分桶表时只需要传入一个或多个分桶字段即可
+
+`SORTED BY`语句用来指定对分桶后的文件中的数据进行排序，可以指定一个或者多个字段，排序规则也可以指定升序排序或降序排序
+
+`INTO`语句用来指定分桶的数量，即文件的个数
+
+**分桶表的数据装载**
+
+-   **`load`方式，将本地或者`HDFS`上文件的数据装载到分桶表中**
+
+    `Hive 3.x`版本中，`load`数据可以直接跑`MapReduce`任务，因此，能够将一个文件或多个文件中的数据按分桶规则分别装载进不同的分桶中。而在`Hive 2.x`版本中，因为无法直接运行`MapReduce`任务，需要将数据传到一张表里，再通过查询的方式导入到分桶表里面。
+
+    ```hive
+    LOAD DATA [LOCAL] INPATH <file_path> INTO TABLE <table_name>;
+    ```
+
+-   **`INSERT`方式，这种方式一般用于将查询结果写入到一个分桶表中，因此只需要将分桶表作为普通的表写入到`SQL`语句中即可**
+
+    ```hive
+    INSERT INTO | OVERWRITE TABLE <table_name> 
+    <select_statement>
+    ```
+
