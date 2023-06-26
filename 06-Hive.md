@@ -1,6 +1,11 @@
 <h1 align = "center">Hive
 </h1>
 
+>   ==关于`Hive`后续的工作内容的思考==
+>
+>   -   为每个`SQL`语句，补充相应案例
+>   -   对于能够指定字段的关键字，测试一下能够指定的字段数量，是只能指定一个，还是多个
+
 # 一、概述
 
 ## 1.1、Hive简介
@@ -690,6 +695,8 @@ INSERT OVERWRITE [LOCAL] DIRECTORY <directory>
 <select_statement>;
 ```
 
+**由于使用的是`OVERWRITE`关键字，会覆盖原有路径中的数据，因此，进行此操作时，务必要小心填写路径名称**
+
 ## 4.3、Export & Import
 
 `Export`导出语句可将表的数据和元数据信息一并导出到`HDFS`路径，`Import`可将`Export`导出的内容导入`Hive`，表的数据和元数据信息都会恢复。`Export`和`Import`可用于两个`Hive`实例之间的数据迁移。
@@ -792,7 +799,7 @@ LIMIT 2,3 -- 表示从第2行开始，向下抓取3行
 
 -   `SORT BY`：分区内排序。`SORT BY`为每一个分区创建一个排序文件，里面存放排序好的数据
 
--   `CLUSTER BY`：当`DISTRIBUTER BY`与`SORT BY`的字段相同时，可以使用`CLUSTER BY`替代
+-   `CLUSTER BY`：当`DISTRIBUTER BY`与`SORT BY`的字段相同时，可以使用`CLUSTER BY`替代。**需要注意的是，`CLUSTER BY`只能进行升序排序**
 
 # 六、函数
 
@@ -1165,4 +1172,48 @@ CREATE [TEMPORARY] [EXTERNAL] TABLE [IF NOT EXISTS] [<db_name.>]<table_name>
     INSERT INTO | OVERWRITE TABLE <table_name> 
     <select_statement>
     ```
+
+# 八、文件存储与压缩
+
+`Hive`是`Hadoop`的客户端，其数据存储和计算分别取决于`Hadoop`的`HDFS`和`MapReduce`，因此`Hadoop`在存储和计算过程中支持的文件存储格式和压缩算法就是`Hive`支持的文件存储格式和压缩算法。只是由于`Hive`对`Hadoop`进行了封装，因此在指定文件存储格式和压缩算法时，和`Hadoop`有所不同，相比之下是更加容易使用的。
+
+## 8.1、文件存储
+
+`Hive`数据存储格式支持`text file`、`orc`、`parquet`、`sequence file`，其中，默认文件存储格式是`text file`。
+
+`text file`和`sequence file`文件格式是行式存储格式，而`orc`和`parquet`是列式存储。
+
+行式存储的特点，是将数据表中的数据按记录为单位进行存储，同一条记录的所有字段均在同一个地方储存，因此对于查询满足条件的整行数据的需求，行式存储更具有优势。
+
+列式存储的特点，是将数据表中的数据按字段为单位进行存储，同一个字段的所有值分块都存储在同一个地方，因此，在查询部分字段的数据时，列式存储效率更高。此外，由于列式存储的数据，其数据类型都是相同的，因此，针对该特性能够设计更好的压缩算法。
+
+**`text file`**
+
+`text file`即文本文件，文件中的一行数据就是`Hive`表中的一条数据。
+
+**创建`text file`存储格式的`Hive`表**
+
+```hive
+CREATE TABLE <table_name>
+(
+	<colume_name1> <data_type> 
+    [, <colume_name2> <data_type>, ...]
+)
+STORED AS textfile
+```
+
+**`orc`**
+
+`orc (Optimized Row Columnar)`是`Hive 0.11`版本里引入的一种列式存储文件格式，其具体的文件存储架构在此不做说明。
+
+**创建`orc`存储格式的`Hive`表**
+
+```hive
+CREATE TABLE <table_name>
+(
+	<colume_name1> <data_type> 
+    [, <colume_name2> <data_type>, ...]
+)
+STORED AS orc
+```
 
